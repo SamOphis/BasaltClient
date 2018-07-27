@@ -38,7 +38,9 @@ class AudioTrackUtil internal constructor() {
     companion object {
         /** @suppress */
         private val MANAGER = DefaultAudioPlayerManager()
+        /** @suppress */
         private val LOGGER: Logger = LoggerFactory.getLogger(AudioTrackUtil::class.java)
+        /** @suppress */
         init {
             Runtime.getRuntime().addShutdownHook(Thread {MANAGER::shutdown})
         }
