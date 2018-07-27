@@ -121,4 +121,11 @@ dependencies {
     compile group: 'org.javassist', name: 'javassist', version: javassist_version
     compile group: 'it.unimi.dsi', name: 'fastutil', version: fastutil_version
     compile group: 'net.dv8tion', name: 'JDA', version: jda_version
+    compile group: 'org.jetbrains.kotlin', name: 'kotlin-stdlib-jdk8', version: kotlin_version
+}
+
+compileKotlin {
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
 }
