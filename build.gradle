@@ -40,14 +40,15 @@ apply plugin: 'com.github.johnrengelman.shadow'
 apply plugin: 'com.github.ben-manes.versions'
 
 group 'basalt'
-version '0.1'
+version '0.2'
 description = 'A fully-documented and fast client implementation for Basalt and JDA.'
 sourceCompatibility = 10
 targetCompatibility = 10
 
 repositories {
     jcenter()
-    mavenLocal()
+    mavenCentral()
+    maven {url 'https://repo.spring.io/milestone'}
 }
 
 dokka {
@@ -111,6 +112,7 @@ ext {
     javassist_version = '3.23.1-GA'
     fastutil_version = '8.2.1'
     jda_version = '3.7.1_386'
+    reactor_core_version = '3.2.0.M2'
 }
 
 dependencies {
@@ -122,6 +124,8 @@ dependencies {
     compile group: 'it.unimi.dsi', name: 'fastutil', version: fastutil_version
     compile group: 'net.dv8tion', name: 'JDA', version: jda_version
     compile group: 'org.jetbrains.kotlin', name: 'kotlin-stdlib-jdk8', version: kotlin_version
+    compile group: 'io.sentry', name: 'sentry-logback', version: '1.7.5' // REMOVE FOR PRODUCTION
+    compile group: 'io.projectreactor', name: 'reactor-core', version: reactor_core_version
 }
 
 compileKotlin {
