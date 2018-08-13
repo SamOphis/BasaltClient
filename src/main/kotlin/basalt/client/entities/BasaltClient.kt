@@ -1,5 +1,6 @@
 package basalt.client.entities
 
+import basalt.client.util.AudioTrackUtil
 import it.unimi.dsi.fastutil.longs.Long2ObjectMaps
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
 import it.unimi.dsi.fastutil.objects.Object2ObjectMaps
@@ -46,6 +47,8 @@ class BasaltClient internal constructor(val defaultWsPort: Int, val defaultBaseI
             // todo load balancing
             return _nodes.values.first()
         }
+
+    val trackUtil = AudioTrackUtil()
 
     fun addAudioNodes(vararg nodes: AudioNode) = nodes.forEach { _nodes[it.address] = it }
     fun removeAudioNodes(vararg nodes: AudioNode) = nodes.forEach { _nodes.remove(it.address) }
