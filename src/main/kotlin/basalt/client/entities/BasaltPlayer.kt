@@ -1,9 +1,6 @@
 package basalt.client.entities
 
-import basalt.client.entities.messages.client.EmptyRequest
-import basalt.client.entities.messages.client.InitializeRequest
-import basalt.client.entities.messages.client.LoadTracksRequest
-import basalt.client.entities.messages.client.PlayRequest
+import basalt.client.entities.messages.client.*
 import basalt.client.entities.messages.server.tracks.AudioLoadResult
 import com.jsoniter.JsonIterator
 import com.jsoniter.any.Any
@@ -49,6 +46,10 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.error("Node is null when attempting to initialize a player for Guild ID: {}", guildId)
             throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
         }
+        if (state == State.CONNECTED) {
+            LOGGER.warn("Already connected to an AudioNode for Guild ID: {}", guildId)
+            throw IllegalStateException("Guild ID: $guildId | Already connected!")
+        }
         if (sessionId == null) {
             LOGGER.error("Session ID is null when initializing a player for Guild ID: {}", guildId)
             throw IllegalArgumentException("Guild ID: $guildId | Null Session ID!")
@@ -71,7 +72,14 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
         node.socket.sendText(text)
         return node.eventBus
                 .filter { it["key"]?.toString() == key }
-                .doOnNext { state = State.CONNECTED }
+                .doOnNext {
+                    if (it["name"]?.toString() == "INITIALIZED") {
+                        LOGGER.debug("Initialized the player for Guild ID: {}", guildId)
+                        state = State.CONNECTED
+                        return@doOnNext
+                    }
+                    LOGGER.warn("Failed to initialize player for Guild ID: {}", guildId)
+                }
                 .next()
     }
 
@@ -79,6 +87,10 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
         if (node == null) {
             LOGGER.error("Node is null when attempting to load tracks, from Guild ID: {}", guildId)
             throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
+        }
+        if (state != State.CONNECTED) {
+            LOGGER.warn("Not connected/initialized for Guild ID: {}", guildId)
+            throw IllegalStateException("Guild ID: $guildId | Not connected/destroyed!")
         }
         val node = node!!
         val key = "loadTracks${System.nanoTime()}"
@@ -89,6 +101,8 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
                 .filter { it["key"]?.toString() == key && it["name"]?.toString() == "LOAD_TRACK_CHUNK" }
                 .flatMapIterable {
                     any ->
+                    // no chance of error here
+                    LOGGER.debug("Received track load chunk for Guild ID: {}", guildId)
                     val data = any.get("data")
                     val list = ObjectArrayList<AudioLoadResult>(data.size())
                     data.forEach { list.add(JsonIterator.deserialize(it.toString(), AudioLoadResult::class.java)) }
@@ -103,12 +117,24 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.error("Node is null when attempting to play audio to Guild ID: {}", guildId)
             throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
         }
+        if (state != State.CONNECTED) {
+            LOGGER.warn("Not connected/initialized for Guild ID: {}", guildId)
+            throw IllegalStateException("Guild ID: $guildId | Not connected/destroyed!")
+        }
         val node = node!!
         val key = "playTracks${System.nanoTime()}"
         val request = PlayRequest(key, guildId.toString(), track, startTime)
         node.socket.sendText(JsonStream.serialize(request))
         return node.eventBus
                 .filter { it["key"]?.toString() == key }
+                .doOnNext {
+                    any ->
+                    if (any["name"]?.toString() == "TRACK_STARTED") {
+                        LOGGER.debug("Started track for Guild ID: {}", guildId)
+                        return@doOnNext
+                    }
+                    LOGGER.warn("Failed to start track for Guild ID: {}", guildId)
+                }
                 .next()
     }
 
@@ -117,9 +143,9 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.error("Node is null when attempting to stop the current track for Guild ID: {}", guildId)
             throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
         }
-        if (playingTrack == null) {
-            LOGGER.warn("No track is currently playing for Guild ID: {}", guildId)
-            return Mono.empty()
+        if (state != State.CONNECTED) {
+            LOGGER.warn("Not connected/initialized for Guild ID: {}", guildId)
+            throw IllegalStateException("Guild ID: $guildId | Not connected/destroyed!")
         }
         val node = node!!
         val key = "stopTrack${System.nanoTime()}"
@@ -127,6 +153,14 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
         node.socket.sendText(JsonStream.serialize(request))
         return node.eventBus
                 .filter { it["key"]?.toString() == key }
+                .doOnNext {
+                    any ->
+                    if (any["name"]?.toString() == "TRACK_ENDED") {
+                        LOGGER.debug("Successfully stopped playing audio for Guild ID: {}", guildId)
+                        return@doOnNext
+                    }
+                    LOGGER.warn("Failed to stop the player for Guild ID: {}", guildId)
+                }
                 .next()
     }
 
@@ -152,6 +186,71 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
         node.socket.sendText(JsonStream.serialize(request))
         return node.eventBus
                 .filter { it["key"]?.toString() == key }
+                .doOnNext {
+                    any ->
+                    if (any["name"]?.toString() == "DESTROYED") {
+                        LOGGER.debug("Destroyed player for Guild ID: {}", guildId)
+                        state = State.DESTROYED
+                        return@doOnNext
+                    }
+                    LOGGER.warn("Failed to destroy player for Guild ID: {}, JSON Content: {}", guildId, any.toString())
+                }
+                .next()
+    }
+
+    fun seek(position: Long): Mono<Any> {
+        if (node == null) {
+            LOGGER.error("Node is null when attempting to seek to a new position for Guild ID: {}", guildId)
+            throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
+        }
+        if (state != State.CONNECTED) {
+            LOGGER.warn("Not connected/initialized for Guild ID: {}", guildId)
+            throw IllegalStateException("Guild ID: $guildId | Not connected/destroyed!")
+        }
+        val node = node!!
+        val key = "seek${System.nanoTime()}$position"
+        val request = SeekRequest(key, guildId.toString(), position)
+        node.socket.sendText(JsonStream.serialize(request))
+        return node.eventBus
+                .filter { it["key"]?.toString() == key }
+                .doOnNext {
+                    any ->
+                    if (any["name"]?.toString() == "POSITION_UPDATE") {
+                        LOGGER.debug("Successfully seeked to Position: {} for Guild ID: {}", position, guildId)
+                        this.position = any["data"]?.toLong() ?: position
+                        return@doOnNext
+                    }
+                    LOGGER.warn("Failed to seek for Guild ID: {}, JSON Content: {}", guildId, any.toString())
+                }
+                .next()
+    }
+
+    fun pause(): Mono<Any> = setPaused0(true)
+    fun resume(): Mono<Any> = setPaused0(false)
+    private fun setPaused0(paused: Boolean): Mono<Any> {
+        if (node == null) {
+            LOGGER.error("Node is null when attempting to pause/resume audio for Guild ID: {}", guildId)
+            throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
+        }
+        if (state != State.CONNECTED) {
+            LOGGER.warn("Not connected/initialized for Guild ID: {}", guildId)
+            throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
+        }
+        val node = node!!
+        val key = "setPaused${System.nanoTime()}$paused"
+        val request = SetPausedRequest(key, guildId.toString(), paused)
+        node.socket.sendText(JsonStream.serialize(request))
+        return node.eventBus
+                .filter { it["key"]?.toString() == key }
+                .doOnNext {
+                    any ->
+                    if (any["name"]?.toString() == "PLAYER_PAUSED") {
+                        LOGGER.debug("Successfully paused/resumed audio for Guild ID: {}", guildId)
+                        this.paused = any["data"]?.toBoolean() ?: this.paused
+                        return@doOnNext
+                    }
+                    LOGGER.warn("Failed to pause/resume audio for Guild ID: {}, JSON Content: {}", guildId, any.toString())
+                }
                 .next()
     }
 

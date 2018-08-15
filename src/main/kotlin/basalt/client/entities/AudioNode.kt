@@ -29,8 +29,9 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
                                      val maxInterval: Long, val intervalExpander: ((AudioNode, Long) -> Long),
                                      val intervalTimeUnit: TimeUnit, val factory: WebSocketFactory,
                                      val initializer: ((WebSocket) -> WebSocket), val password: String, val address: String,
-                                     private val handlers: SocketHandlerMap): WebSocketAdapter() {
+                                     handlers: SocketHandlerMap): WebSocketAdapter() {
 
+    private val handlers: SocketHandlerMap = SocketHandlerMap()
     val socket: WebSocket
     init {
         try {
@@ -43,6 +44,11 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
         } catch (exc: IOException) {
             LOGGER.error("Error when creating a WebSocket instance!", exc)
             throw exc // no way to recover from this.
+        }
+        handlers.entries.forEach { this.handlers[it.key] = it.value }
+        handlers["statsUpdate"] = {
+            _, data ->
+            println("STATS: $data")
         }
     }
 
@@ -68,7 +74,6 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
                         LOGGER.warn("Unhandled Response from the Basalt Server! OP: {}, Content: {}", op, text)
                     }
                 } catch (err: Throwable) {
-                    err.printStackTrace()
                     when (err) {
                         is JsonException -> LOGGER.error("JsonException | Error when deserializing Basalt Server JSON Response! Content: {}, Message: {}", text, err.message)
                         is KotlinNullPointerException -> LOGGER.error("KotlinNullPointerException | Missing Opcode Key from JSON Response! Content: {}, Message: {}", text, err.message)
@@ -82,6 +87,7 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
 
     override fun onConnected(websocket: WebSocket, headers: MutableMap<String, MutableList<String>>) {
         LOGGER.info("Connected!")
+        websocket.sendPing()
 
     }
     override fun onDisconnected(websocket: WebSocket, serverCloseFrame: WebSocketFrame, clientCloseFrame: WebSocketFrame, closedByServer: Boolean) {
