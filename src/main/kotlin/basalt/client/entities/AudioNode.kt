@@ -18,6 +18,7 @@ package basalt.client.entities
 
 import basalt.client.entities.builders.SocketHandlerMap
 import basalt.client.entities.messages.server.PlayerUpdate
+import basalt.client.entities.messages.server.stats.StatsUpdate
 import com.jsoniter.JsonIterator
 import com.jsoniter.any.Any
 import com.jsoniter.spi.JsonException
@@ -29,18 +30,6 @@ import reactor.core.publisher.Flux
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-
-/*
-each creation of node creates a flux for dispatched events
-flux consumer adds ws listener. incoming events progress sink (whole Any body is sent)
-
-when initializing, send request obv, filter flux based on event name (INITIALIZED) and matching keys
-map to a generated mono (Mono.generate<Unit?>)  which simply completes (no data = no event)
-
-when loading tracks which obv come in chunks, send request, filter flux based on LOAD_TRACK_CHUNK and CHUNK FINISHED + keys.
-map to a generated flux (Flux.generate<Array<TrackInfoClass>>). each chunk = next, chunk finished = complete
- */
-
 @Suppress("UNUSED")
 class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, val baseInterval: Long,
                                      val maxInterval: Long, val intervalExpander: ((AudioNode, Long) -> Long),
@@ -50,6 +39,8 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
 
     private val handlers: SocketHandlerMap = SocketHandlerMap()
     val socket: WebSocket
+    var statistics: Statistics? = null
+        private set
     init {
         try {
             socket = initializer(factory
@@ -62,10 +53,26 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
             LOGGER.error("Error when creating a WebSocket instance!", exc)
             throw exc // no way to recover from this.
         }
+
         handlers["statsUpdate"] = {
             _, data ->
-            println("STATS: $data")
+            val stats = JsonIterator.deserialize(data.toString(), StatsUpdate::class.java)
+            if (statistics == null)
+                statistics = Statistics()
+            statistics?.apply {
+                players = stats.players
+                playingPlayers = stats.playingPlayers
+                uptime = stats.uptime
+                cores = stats.cpu.cores
+                systemLoad = stats.cpu.systemLoad
+                basaltLoad = stats.cpu.basaltLoad
+                freeMemory = stats.memory.free
+                usedMemory = stats.memory.used
+                reservedMemory = stats.memory.reserved
+                allocatedMemory = stats.memory.allocated
+            }
         }
+
         handlers["playerUpdate"] = {
             _, data ->
             val update = JsonIterator.deserialize(data.toString(), PlayerUpdate::class.java)
@@ -116,20 +123,20 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
     }
 
     override fun onConnected(websocket: WebSocket, headers: MutableMap<String, MutableList<String>>) {
-        LOGGER.info("Connected!")
-        websocket.sendPing()
-
+        LOGGER.info("Connected to AudioNode: {}", websocket.uri.host)
     }
+
     override fun onDisconnected(websocket: WebSocket, serverCloseFrame: WebSocketFrame, clientCloseFrame: WebSocketFrame, closedByServer: Boolean) {
-        LOGGER.info("Closing BasaltClient connection!")
+        val closer = if (closedByServer) "server" else "client"
+        LOGGER.info("Disconnected from AudioNode: {} by {}!", websocket.uri.host, closer)
     }
 
     override fun onError(socket: WebSocket, error: WebSocketException) {
-        LOGGER.error("Error thrown in the WebSocket Handler for Node URI: {} | Error Message: {}", address, error.message ?: "No message.")
+        LOGGER.error("Error thrown in the WebSocket Handler for AudioNode: {} | Error Message: {}", socket.uri.host, error.message ?: "No message.")
     }
 
     override fun onConnectError(websocket: WebSocket, exception: WebSocketException) {
-        LOGGER.error("Error when connecting to {}, Message: {}", address, exception.message)
+        LOGGER.error("Error when connecting to the AudioNode at {}, Error Message: {}", websocket.uri.host, exception.message)
     }
 
     companion object {
