@@ -1,6 +1,7 @@
 package basalt.client.entities
 
 import basalt.client.entities.builders.SocketHandlerMap
+import basalt.client.entities.messages.server.PlayerUpdate
 import com.jsoniter.JsonIterator
 import com.jsoniter.any.Any
 import com.jsoniter.spi.JsonException
@@ -45,11 +46,24 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
             LOGGER.error("Error when creating a WebSocket instance!", exc)
             throw exc // no way to recover from this.
         }
-        handlers.entries.forEach { this.handlers[it.key] = it.value }
         handlers["statsUpdate"] = {
             _, data ->
             println("STATS: $data")
         }
+        handlers["playerUpdate"] = {
+            _, data ->
+            val update = JsonIterator.deserialize(data.toString(), PlayerUpdate::class.java)
+            val player = client.getPlayerById(update.guildId.toLong())
+            if (player != null) {
+                LOGGER.debug("Player Update for Guild ID: {}, Position: {}, Timestamp: {}", update.guildId, update.position, update.timestamp)
+                player.position = update.position
+                player.timestamp = update.timestamp
+            }
+            else {
+                LOGGER.warn("Player Update for non-existent player (Guild ID: {})", update.guildId)
+            }
+        }
+        handlers.entries.forEach { this.handlers[it.key] = it.value }
     }
 
     internal val eventBus = Flux.create<Any> {

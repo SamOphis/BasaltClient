@@ -10,7 +10,9 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList
 import org.slf4j.LoggerFactory
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
+import kotlin.math.min
 
+@Suppress("UNUSED")
 class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: Long) {
     @Volatile var sessionId: String? = null
         private set
@@ -35,11 +37,27 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
     @Volatile var playingTrack: AudioTrack? = null
         internal set
 
+    @Volatile var timestamp: Long = 0
+        internal set
+
     @Volatile var position: Long = 0
+        get() {
+            if (playingTrack == null) {
+                LOGGER.warn("Player for Guild ID: {} is not playing anything (when attempting to get position).", guildId)
+                throw IllegalStateException("Guild ID: $guildId | Non-existent AudioTrack!")
+            }
+            return if (paused)
+                min(field, playingTrack!!.duration)
+            else
+                min(field + (System.currentTimeMillis() - timestamp), playingTrack!!.duration)
+        }
         internal set
 
     @Volatile var paused: Boolean = false
         internal set
+
+    @Volatile var volume: Int = 100
+        private set
 
     fun connect(sessionId: String? = this.sessionId, token: String? = this.token, endpoint: String? = this.endpoint): Mono<Any> {
         if (node == null) {
@@ -221,6 +239,33 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
                         return@doOnNext
                     }
                     LOGGER.warn("Failed to seek for Guild ID: {}, JSON Content: {}", guildId, any.toString())
+                }
+                .next()
+    }
+
+    fun setVolume(volume: Int): Mono<Any> {
+        if (node == null) {
+            LOGGER.error("Node is null when attempting to set the volume for Guild ID: {}", guildId)
+            throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
+        }
+        if (state != State.CONNECTED) {
+            LOGGER.warn("Not connected/initialized for Guild ID: {}", guildId)
+            throw IllegalStateException("Guild ID: $guildId | Not connected/destroyed!")
+        }
+        val node = node!!
+        val key = "volume${System.nanoTime()}$volume"
+        val request = SetVolumeRequest(key, guildId.toString(), volume)
+        node.socket.sendText(JsonStream.serialize(request))
+        return node.eventBus
+                .filter { it["key"]?.toString() == key }
+                .doOnNext {
+                    any ->
+                    if (any["name"]?.toString() == "VOLUME_UPDATE") {
+                        LOGGER.debug("Successfully set the volume to {} for Guild ID: {}", volume, guildId)
+                        this.volume = volume
+                        return@doOnNext
+                    }
+                    LOGGER.warn("Failed to set volume for Guild ID: {}, JSON Content: {}", guildId, any.toString())
                 }
                 .next()
     }
