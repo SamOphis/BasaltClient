@@ -117,7 +117,7 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
                 .next()
     }
 
-    fun loadTracks(vararg identifiers: String): Flux<AudioLoadResult> {
+    fun loadIdentifiers(vararg identifiers: String): Flux<AudioLoadResult> {
         if (node == null) {
             LOGGER.error("Node is null when attempting to load tracks, from Guild ID: {}", guildId)
             throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
@@ -127,16 +127,16 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             throw IllegalStateException("Guild ID: $guildId | Not connected/destroyed!")
         }
         val node = node!!
-        val key = "loadTracks${System.nanoTime()}"
-        val request = LoadTracksRequest(key, *identifiers)
+        val key = "loadIdentifiers${System.nanoTime()}"
+        val request = LoadIdentifiersRequest(key, *identifiers)
         val text = JsonStream.serialize(request)
         node.socket.sendText(text)
         return node.eventBus
-                .filter { it["key"]?.toString() == key && it["name"]?.toString() == "LOAD_TRACK_CHUNK" }
+                .filter { it["key"]?.toString() == key && it["name"]?.toString() == "LOAD_IDENTIFIERS_CHUNK" }
                 .flatMapIterable {
                     any ->
                     // no chance of error here
-                    LOGGER.debug("Received track load chunk for Guild ID: {}", guildId)
+                    LOGGER.debug("Received identifier load chunk for Guild ID: {}", guildId)
                     val data = any.get("data")
                     val list = ObjectArrayList<AudioLoadResult>(data.size())
                     data.forEach { list.add(JsonIterator.deserialize(it.toString(), AudioLoadResult::class.java)) }
