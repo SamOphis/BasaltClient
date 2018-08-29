@@ -13,6 +13,7 @@
    See the License for the specific language governing permissions and
    limitations under the License.
  */
+
 buildscript {
     ext {
         kotlin_version = '1.2.51'
@@ -40,8 +41,8 @@ apply plugin: 'com.github.johnrengelman.shadow'
 apply plugin: 'com.github.ben-manes.versions'
 
 group 'basalt'
-version '0.4.0'
-description = 'A fully-documented and fast client implementation for Basalt and JDA.'
+version '0.5.0'
+description = 'A fast, reactive client implementation for Basalt and JDA.'
 sourceCompatibility = 10
 targetCompatibility = 10
 
