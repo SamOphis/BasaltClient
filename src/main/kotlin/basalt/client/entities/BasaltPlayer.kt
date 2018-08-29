@@ -41,11 +41,16 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
 
     @Volatile var node: AudioNode? = null
         set(value) {
-            if (field != null) {
-                // todo destroy player
+            field?.let {
+                destroy().subscribe()
+            }
+            if (value == null) {
+                // look back over next line
+                // set to not connected on disconnect, connect on connect for all players attached to a node
+                state = State.NOT_CONNECTED
             }
             if (value?.socket?.isOpen == true) {
-                // todo initialize
+                state = State.CONNECTED
             }
             field = value
         }
@@ -80,9 +85,9 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.error("Node is null when attempting to initialize a player for Guild ID: {}", guildId)
             throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
         }
-        if (state == State.CONNECTED) {
-            LOGGER.warn("Already connected to an AudioNode for Guild ID: {}", guildId)
-            throw IllegalStateException("Guild ID: $guildId | Already connected!")
+        if (state == State.INITIALIZED) {
+            LOGGER.warn("Already connected and initialized on an AudioNode for Guild ID: {}", guildId)
+            throw IllegalStateException("Guild ID: $guildId | Already initialized!")
         }
         if (sessionId == null) {
             LOGGER.error("Session ID is null when initializing a player for Guild ID: {}", guildId)
@@ -122,9 +127,9 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.error("Node is null when attempting to load tracks, from Guild ID: {}", guildId)
             throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
         }
-        if (state != State.CONNECTED) {
-            LOGGER.warn("Not connected/initialized for Guild ID: {}", guildId)
-            throw IllegalStateException("Guild ID: $guildId | Not connected/destroyed!")
+        if (state != State.INITIALIZED) {
+            LOGGER.warn("Player for Guild ID: {} uninitialized!", guildId)
+            throw IllegalStateException("Guild ID: $guildId | Not initialized!")
         }
         val node = node!!
         val key = "loadIdentifiers${System.nanoTime()}"
@@ -151,9 +156,9 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.error("Node is null when attempting to play audio to Guild ID: {}", guildId)
             throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
         }
-        if (state != State.CONNECTED) {
-            LOGGER.warn("Not connected/initialized for Guild ID: {}", guildId)
-            throw IllegalStateException("Guild ID: $guildId | Not connected/destroyed!")
+        if (state != State.INITIALIZED) {
+            LOGGER.warn("Player for Guild ID: {} uninitialized!", guildId)
+            throw IllegalStateException("Guild ID: $guildId | Not initialized!")
         }
         val node = node!!
         val key = "playTracks${System.nanoTime()}"
@@ -177,9 +182,9 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.error("Node is null when attempting to stop the current track for Guild ID: {}", guildId)
             throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
         }
-        if (state != State.CONNECTED) {
-            LOGGER.warn("Not connected/initialized for Guild ID: {}", guildId)
-            throw IllegalStateException("Guild ID: $guildId | Not connected/destroyed!")
+        if (state != State.INITIALIZED) {
+            LOGGER.warn("Player for Guild ID: {} uninitialized!", guildId)
+            throw IllegalStateException("Guild ID: $guildId | Not initialized!")
         }
         val node = node!!
         val key = "stopTrack${System.nanoTime()}"
@@ -208,9 +213,9 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
                 LOGGER.warn("Not connected to an AudioNode for Guild ID: {}", guildId)
                 throw IllegalStateException("Guild ID: $guildId | Not connected!")
             }
-            State.DESTROYED -> {
-                LOGGER.warn("Player for Guild ID: {} is already destroyed!", guildId)
-                throw IllegalStateException("Guild ID: $guildId | Already destroyed!")
+            State.CONNECTED -> {
+                LOGGER.warn("Player for Guild ID: {} is uninitialized!", guildId)
+                throw IllegalStateException("Guild ID: $guildId | Not initialized!")
             }
             else -> {}
         }
@@ -224,7 +229,7 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
                     any ->
                     if (any["name"]?.toString() == "DESTROYED") {
                         LOGGER.debug("Destroyed player for Guild ID: {}", guildId)
-                        state = State.DESTROYED
+                        state = State.CONNECTED
                         return@doOnNext
                     }
                     LOGGER.warn("Failed to destroy player for Guild ID: {}, JSON Content: {}", guildId, any.toString())
@@ -237,9 +242,9 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.error("Node is null when attempting to seek to a new position for Guild ID: {}", guildId)
             throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
         }
-        if (state != State.CONNECTED) {
-            LOGGER.warn("Not connected/initialized for Guild ID: {}", guildId)
-            throw IllegalStateException("Guild ID: $guildId | Not connected/destroyed!")
+        if (state != State.INITIALIZED) {
+            LOGGER.warn("Player for Guild ID: {} uninitialized!", guildId)
+            throw IllegalStateException("Guild ID: $guildId | Not initialized!")
         }
         val node = node!!
         val key = "seek${System.nanoTime()}$position"
@@ -264,9 +269,9 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.error("Node is null when attempting to set the volume for Guild ID: {}", guildId)
             throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
         }
-        if (state != State.CONNECTED) {
-            LOGGER.warn("Not connected/initialized for Guild ID: {}", guildId)
-            throw IllegalStateException("Guild ID: $guildId | Not connected/destroyed!")
+        if (state != State.INITIALIZED) {
+            LOGGER.warn("Player for Guild ID: {} uninitialized!", guildId)
+            throw IllegalStateException("Guild ID: $guildId | Not initialized!")
         }
         val node = node!!
         val key = "volume${System.nanoTime()}$volume"
@@ -293,9 +298,9 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.error("Node is null when attempting to pause/resume audio for Guild ID: {}", guildId)
             throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
         }
-        if (state != State.CONNECTED) {
-            LOGGER.warn("Not connected/initialized for Guild ID: {}", guildId)
-            throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
+        if (state != State.INITIALIZED) {
+            LOGGER.warn("Player for Guild ID: {} uninitialized", guildId)
+            throw IllegalStateException("Guild ID: $guildId | Not initialized!")
         }
         val node = node!!
         val key = "setPaused${System.nanoTime()}$paused"
