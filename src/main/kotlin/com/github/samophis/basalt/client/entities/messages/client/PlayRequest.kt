@@ -14,7 +14,7 @@
    limitations under the License.
  */
 
-package basalt.client.entities.messages.client
+package com.github.samophis.basalt.client.entities.messages.client
 
 @Suppress("UNUSED")
 class PlayRequest internal constructor(val key: String, val guildId: String, val track: String, val startTime: Long? = null) {

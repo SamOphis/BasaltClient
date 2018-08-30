@@ -14,7 +14,7 @@
    limitations under the License.
  */
 
-package basalt.client.entities.messages.server.tracks
+package com.github.samophis.basalt.client.entities.messages.server.tracks
 
 import com.jsoniter.annotation.JsonCreator
 import com.jsoniter.annotation.JsonProperty

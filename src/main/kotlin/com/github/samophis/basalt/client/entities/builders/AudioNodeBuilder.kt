@@ -14,10 +14,10 @@
    limitations under the License.
  */
 
-package basalt.client.entities.builders
+package com.github.samophis.basalt.client.entities.builders
 
-import basalt.client.entities.AudioNode
-import basalt.client.entities.BasaltClient
+import com.github.samophis.basalt.client.entities.AudioNode
+import com.github.samophis.basalt.client.entities.BasaltClient
 import com.jsoniter.any.Any
 import com.neovisionaries.ws.client.WebSocket
 import com.neovisionaries.ws.client.WebSocketFactory

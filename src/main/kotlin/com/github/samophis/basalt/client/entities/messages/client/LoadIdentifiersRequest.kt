@@ -14,7 +14,7 @@
    limitations under the License.
  */
 
-package basalt.client.entities.messages.client
+package com.github.samophis.basalt.client.entities.messages.client
 
 @Suppress("UNUSED")
 class LoadIdentifiersRequest internal constructor(val key: String, vararg val identifiers: String) {

@@ -14,9 +14,9 @@
    limitations under the License.
  */
 
-package basalt.client.entities.builders
+package com.github.samophis.basalt.client.entities.builders
 
-import basalt.client.entities.BasaltClient
+import com.github.samophis.basalt.client.entities.BasaltClient
 import org.slf4j.LoggerFactory
 import javax.annotation.Nonnegative
 

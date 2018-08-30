@@ -14,9 +14,9 @@
    limitations under the License.
  */
 
-package basalt.client.entities.builders
+package com.github.samophis.basalt.client.entities.builders
 
-import basalt.client.entities.AudioNode
+import com.github.samophis.basalt.client.entities.AudioNode
 import org.slf4j.LoggerFactory
 import java.util.concurrent.TimeUnit
 import javax.annotation.Nonnegative

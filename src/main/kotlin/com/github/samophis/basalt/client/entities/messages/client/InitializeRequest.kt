@@ -14,7 +14,7 @@
    limitations under the License.
  */
 
-package basalt.client.entities.messages.client
+package com.github.samophis.basalt.client.entities.messages.client
 
 @Suppress("UNUSED")
 class InitializeRequest internal constructor(val key: String, val guildId: String, val sessionId: String, val token: String, val endpoint: String) {
