@@ -27,7 +27,7 @@ class VoiceStateInterceptor(jda: JDAImpl): VoiceStateUpdateHandler(jda) {
         val jda = api.get()
         if (jda == null) {
             LOGGER.error("JDA API reference has been garbage collected. This should never happen! Nullable Guild ID: {}", id)
-            throw IllegalStateException("JDA API reference has been garbage collected! Guild ID: ${id?.toString()}")
+            throw IllegalStateException("JDA API reference has been garbage collected! Guild ID: ${id?.toString() ?: "null"}")
         }
         when {
             id != null && jda.guildLock.isLocked(id) -> return id
