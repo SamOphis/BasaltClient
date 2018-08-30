@@ -44,7 +44,7 @@ apply plugin: 'com.github.ben-manes.versions'
 apply plugin: 'maven-publish'
 apply plugin: 'com.jfrog.bintray'
 
-group 'basalt'
+group 'com.github.samophis'
 version '0.6.1'
 description = 'A fast, reactive client implementation for Basalt and JDA.'
 sourceCompatibility = 10
@@ -125,14 +125,17 @@ task wrapper(type: Wrapper) {
 
 build {
     dependsOn clean
+    dependsOn jar
     dependsOn sourcesJar
     dependsOn javadocJar
     dependsOn shadowJar
     dependsOn updateDocs
+    dependsOn test
 
-    sourcesJar.mustRunAfter clean
-    javadocJar.mustRunAfter sourcesJar
-    shadowJar.mustRunAfter javadocJar
+    jar.mustRunAfter clean
+    javadocJar.mustRunAfter jar
+    sourcesJar.mustRunAfter javadocJar
+    shadowJar.mustRunAfter sourcesJar
 }
 
 bintrayUpload {

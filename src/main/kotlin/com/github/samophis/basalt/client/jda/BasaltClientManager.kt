@@ -14,10 +14,10 @@
    limitations under the License.
  */
 
-package basalt.client.jda
+package com.github.samophis.basalt.client.jda
 
-import basalt.client.entities.BasaltClient
-import basalt.client.entities.builders.BasaltClientBuilder
+import com.github.samophis.basalt.client.entities.BasaltClient
+import com.github.samophis.basalt.client.entities.builders.BasaltClientBuilder
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
 import net.dv8tion.jda.core.JDABuilder
 import org.slf4j.LoggerFactory

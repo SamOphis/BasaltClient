@@ -14,9 +14,9 @@
    limitations under the License.
  */
 
-package basalt.client.jda
+package com.github.samophis.basalt.client.jda
 
-import basalt.client.entities.BasaltClient
+import com.github.samophis.basalt.client.entities.BasaltClient
 import net.dv8tion.jda.core.entities.impl.JDAImpl
 import net.dv8tion.jda.core.events.ReadyEvent
 import net.dv8tion.jda.core.hooks.ListenerAdapter

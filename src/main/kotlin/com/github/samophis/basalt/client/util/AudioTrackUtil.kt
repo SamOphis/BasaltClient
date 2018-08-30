@@ -14,7 +14,7 @@
    limitations under the License.
  */
 
-package basalt.client.util
+package com.github.samophis.basalt.client.util
 
 import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager
 import com.sedmelluq.discord.lavaplayer.tools.io.MessageInput

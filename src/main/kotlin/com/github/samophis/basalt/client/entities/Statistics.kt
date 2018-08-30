@@ -14,7 +14,7 @@
    limitations under the License.
  */
 
-package basalt.client.entities
+package com.github.samophis.basalt.client.entities
 
 @Suppress("UNUSED")
 class Statistics internal constructor() {

@@ -14,11 +14,11 @@
    limitations under the License.
  */
 
-package basalt.client.entities
+package com.github.samophis.basalt.client.entities
 
-import basalt.client.entities.builders.SocketHandlerMap
-import basalt.client.entities.messages.server.PlayerUpdate
-import basalt.client.entities.messages.server.stats.StatsUpdate
+import com.github.samophis.basalt.client.entities.builders.SocketHandlerMap
+import com.github.samophis.basalt.client.entities.messages.server.PlayerUpdate
+import com.github.samophis.basalt.client.entities.messages.server.stats.StatsUpdate
 import com.jsoniter.JsonIterator
 import com.jsoniter.any.Any
 import com.jsoniter.spi.JsonException

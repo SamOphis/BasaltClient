@@ -14,7 +14,7 @@
    limitations under the License.
  */
 
-package basalt.client.jda
+package com.github.samophis.basalt.client.jda
 
 import net.dv8tion.jda.core.entities.impl.JDAImpl
 import net.dv8tion.jda.core.handle.VoiceStateUpdateHandler

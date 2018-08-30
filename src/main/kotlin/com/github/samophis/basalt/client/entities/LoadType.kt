@@ -14,10 +14,18 @@
    limitations under the License.
  */
 
-package basalt.client.entities
+package com.github.samophis.basalt.client.entities
 
-enum class State {
-    NOT_CONNECTED,
-    CONNECTED,
-    INITIALIZED
+@Suppress("UNUSED")
+enum class LoadType {
+    TRACK_LOADED,
+    PLAYLIST_LOADED,
+    SEARCH_RESULT,
+    NO_MATCHES,
+    LOAD_FAILED,
+    UNKNOWN;
+
+    companion object {
+        fun from(name: String): LoadType = enumValueOf(name.toUpperCase())
+    }
 }

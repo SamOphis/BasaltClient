@@ -14,10 +14,10 @@
    limitations under the License.
  */
 
-package basalt.client.entities
+package com.github.samophis.basalt.client.entities
 
-import basalt.client.entities.messages.client.*
-import basalt.client.entities.messages.server.tracks.AudioLoadResult
+import com.github.samophis.basalt.client.entities.messages.client.*
+import com.github.samophis.basalt.client.entities.messages.server.tracks.AudioLoadResult
 import com.jsoniter.JsonIterator
 import com.jsoniter.any.Any
 import com.jsoniter.output.JsonStream

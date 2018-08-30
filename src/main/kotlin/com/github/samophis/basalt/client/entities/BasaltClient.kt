@@ -14,9 +14,9 @@
    limitations under the License.
  */
 
-package basalt.client.entities
+package com.github.samophis.basalt.client.entities
 
-import basalt.client.util.AudioTrackUtil
+import com.github.samophis.basalt.client.util.AudioTrackUtil
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap
 import it.unimi.dsi.fastutil.longs.Long2ObjectMaps
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
