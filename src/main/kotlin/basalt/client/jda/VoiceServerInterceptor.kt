@@ -26,9 +26,14 @@ class VoiceServerInterceptor(private val client: BasaltClient, jda: JDAImpl): So
     override fun handleInternally(content: JSONObject): Long? {
         LOGGER.debug(content.toString())
         val id = content.getLong("guild_id")
-        if (api.guildLock.isLocked(id))
+        val jda = api.get()
+        if (jda == null) {
+            LOGGER.error("JDA API reference garbage collected? wtf this should never happen. Guild ID: {}", id)
+            throw IllegalStateException("JDA API reference garbage collected! This should never happen normally! Guild ID: $id")
+        }
+        if (jda.guildLock.isLocked(id))
             return id
-        val guild = api.getGuildById(id)
+        val guild = jda.getGuildById(id)
         if (guild == null) {
             LOGGER.error("Non-existent Guild with ID: {}", id)
             throw IllegalStateException("Guild ID: $id | Guild is non-existent!")

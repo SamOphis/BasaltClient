@@ -20,6 +20,7 @@ buildscript {
         dokka_version = '0.9.17'
         shadow_version = '2.0.4'
         versions_version = '0.20.0'
+        bintray_version = '1.8.4'
     }
     repositories {
         jcenter()
@@ -31,6 +32,7 @@ buildscript {
         classpath "org.jetbrains.dokka:dokka-gradle-plugin:$dokka_version"
         classpath "com.github.jengelman.gradle.plugins:shadow:$shadow_version"
         classpath "com.github.ben-manes:gradle-versions-plugin:$versions_version"
+        classpath "com.jfrog.bintray.gradle:gradle-bintray-plugin:$bintray_version"
     }
 }
 
@@ -39,9 +41,11 @@ apply plugin: 'idea'
 apply plugin: 'org.jetbrains.dokka'
 apply plugin: 'com.github.johnrengelman.shadow'
 apply plugin: 'com.github.ben-manes.versions'
+apply plugin: 'maven-publish'
+apply plugin: 'com.jfrog.bintray'
 
 group 'basalt'
-version '0.6.0'
+version '0.6.1'
 description = 'A fast, reactive client implementation for Basalt and JDA.'
 sourceCompatibility = 10
 targetCompatibility = 10
@@ -49,7 +53,7 @@ targetCompatibility = 10
 repositories {
     jcenter()
     mavenCentral()
-    maven {url 'https://repo.spring.io/milestone'}
+    maven { url 'https://repo.spring.io/milestone' }
 }
 
 dokka {
@@ -64,6 +68,37 @@ dokka {
         suffix = '#L'
     }
 }
+
+bintray {
+    user = bintrayUsername
+    key = bintrayApiKey
+    publications = ['BintrayRelease']
+    pkg {
+        repo = 'maven'
+        name = 'BasaltClient'
+        licenses = ['Apache-2.0']
+        vcsUrl = ['https://github.com/SamOphis/BasaltClient.git']
+        publish = true
+        version {
+            name = project.version
+            released = new Date()
+        }
+    }
+}
+
+publishing {
+    publications {
+        BintrayRelease(MavenPublication) {
+            from components.java
+            groupId group
+            artifactId 'BasaltClient'
+            version version
+            artifact javadocJar
+            artifact sourcesJar
+        }
+    }
+}
+
 
 shadowJar {
     classifier = 'withDependencies'
@@ -100,6 +135,13 @@ build {
     shadowJar.mustRunAfter javadocJar
 }
 
+bintrayUpload {
+    dependsOn build
+
+    onlyIf { !getProjectProperty("bintrayUsername").empty }
+    onlyIf { !getProjectProperty("bintrayApiKey").empty }
+}
+
 artifacts {
     archives sourcesJar
     archives javadocJar
@@ -132,4 +174,14 @@ compileKotlin {
     kotlinOptions {
         jvmTarget = '1.8'
     }
+}
+
+String getProjectProperty(String propertyName)
+{
+    String property = ""
+    if (hasProperty(propertyName))
+    {
+        property = this.properties[propertyName]
+    }
+    return property
 }
