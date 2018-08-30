@@ -13,12 +13,14 @@
    See the License for the specific language governing permissions and
    limitations under the License.
  */
+
 buildscript {
     ext {
-        kotlin_version = '1.2.51'
+        kotlin_version = '1.2.61'
         dokka_version = '0.9.17'
         shadow_version = '2.0.4'
         versions_version = '0.20.0'
+        bintray_version = '1.8.4'
     }
     repositories {
         jcenter()
@@ -30,6 +32,7 @@ buildscript {
         classpath "org.jetbrains.dokka:dokka-gradle-plugin:$dokka_version"
         classpath "com.github.jengelman.gradle.plugins:shadow:$shadow_version"
         classpath "com.github.ben-manes:gradle-versions-plugin:$versions_version"
+        classpath "com.jfrog.bintray.gradle:gradle-bintray-plugin:$bintray_version"
     }
 }
 
@@ -38,16 +41,19 @@ apply plugin: 'idea'
 apply plugin: 'org.jetbrains.dokka'
 apply plugin: 'com.github.johnrengelman.shadow'
 apply plugin: 'com.github.ben-manes.versions'
+apply plugin: 'maven-publish'
+apply plugin: 'com.jfrog.bintray'
 
-group 'basalt'
-version '0.1'
-description = 'A fully-documented and fast client implementation for Basalt and JDA.'
+group 'com.github.samophis'
+version '0.6.2'
+description = 'A fast, reactive client implementation for Basalt and JDA.'
 sourceCompatibility = 10
 targetCompatibility = 10
 
 repositories {
     jcenter()
-    mavenLocal()
+    mavenCentral()
+    maven { url 'https://repo.spring.io/milestone' }
 }
 
 dokka {
@@ -62,6 +68,37 @@ dokka {
         suffix = '#L'
     }
 }
+
+bintray {
+    user = bintrayUsername
+    key = bintrayApiKey
+    publications = ['BintrayRelease']
+    pkg {
+        repo = 'maven'
+        name = 'BasaltClient'
+        licenses = ['Apache-2.0']
+        vcsUrl = ['https://github.com/SamOphis/BasaltClient.git']
+        publish = true
+        version {
+            name = project.version
+            released = new Date()
+        }
+    }
+}
+
+publishing {
+    publications {
+        BintrayRelease(MavenPublication) {
+            from components.java
+            groupId group
+            artifactId 'BasaltClient'
+            version version
+            artifact javadocJar
+            artifact sourcesJar
+        }
+    }
+}
+
 
 shadowJar {
     classifier = 'withDependencies'
@@ -83,19 +120,29 @@ task updateDocs(type: Copy, dependsOn: javadocJar) {
 }
 
 task wrapper(type: Wrapper) {
-    gradleVersion = '4.9'
+    gradleVersion = '4.10'
 }
 
 build {
     dependsOn clean
+    dependsOn jar
     dependsOn sourcesJar
     dependsOn javadocJar
     dependsOn shadowJar
     dependsOn updateDocs
+    dependsOn test
 
-    sourcesJar.mustRunAfter clean
-    javadocJar.mustRunAfter sourcesJar
-    shadowJar.mustRunAfter javadocJar
+    jar.mustRunAfter clean
+    javadocJar.mustRunAfter jar
+    sourcesJar.mustRunAfter javadocJar
+    shadowJar.mustRunAfter sourcesJar
+}
+
+bintrayUpload {
+    dependsOn build
+
+    onlyIf { !getProjectProperty("bintrayUsername").empty }
+    onlyIf { !getProjectProperty("bintrayApiKey").empty }
 }
 
 artifacts {
@@ -110,7 +157,8 @@ ext {
     jsoniter_version = '0.9.23'
     javassist_version = '3.23.1-GA'
     fastutil_version = '8.2.1'
-    jda_version = '3.7.1_386'
+    jda_version = '3.7.1_405'
+    reactor_core_version = '3.2.0.M4'
 }
 
 dependencies {
@@ -121,4 +169,22 @@ dependencies {
     compile group: 'org.javassist', name: 'javassist', version: javassist_version
     compile group: 'it.unimi.dsi', name: 'fastutil', version: fastutil_version
     compile group: 'net.dv8tion', name: 'JDA', version: jda_version
+    compile group: 'org.jetbrains.kotlin', name: 'kotlin-stdlib-jdk8', version: kotlin_version
+    compile group: 'io.projectreactor', name: 'reactor-core', version: reactor_core_version
+}
+
+compileKotlin {
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+}
+
+String getProjectProperty(String propertyName)
+{
+    String property = ""
+    if (hasProperty(propertyName))
+    {
+        property = this.properties[propertyName]
+    }
+    return property
 }
