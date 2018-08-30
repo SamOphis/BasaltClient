@@ -17,19 +17,18 @@
 package basalt.client.entities
 
 import basalt.client.util.AudioTrackUtil
+import it.unimi.dsi.fastutil.longs.Long2ObjectMap
 import it.unimi.dsi.fastutil.longs.Long2ObjectMaps
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
-import it.unimi.dsi.fastutil.objects.Object2ObjectMaps
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap
-import it.unimi.dsi.fastutil.objects.ObjectArrayList
-import it.unimi.dsi.fastutil.objects.ObjectLists
+import it.unimi.dsi.fastutil.objects.*
 import org.slf4j.LoggerFactory
 import java.util.concurrent.TimeUnit
 
 typealias AudioNodeMap = Object2ObjectOpenHashMap<String, AudioNode>
 typealias AudioNodeList = ObjectArrayList<AudioNode>
 
-typealias PlayerMap = Long2ObjectOpenHashMap<BasaltPlayer>
+typealias PlayerMap = Long2ObjectMap<BasaltPlayer>
+typealias PlayerHashMap = Long2ObjectOpenHashMap<BasaltPlayer>
 typealias PlayerList = ObjectArrayList<BasaltPlayer>
 
 @Suppress("UNUSED")
@@ -37,7 +36,7 @@ class BasaltClient internal constructor(val defaultWsPort: Int, val defaultBaseI
                                         val defaultIntervalTimeUnit: TimeUnit, val defaultIntervalExpander: ((AudioNode, Long) -> Long),
                                         val defaultNodePassword: String, val userId: Long) {
     private val _nodes = AudioNodeMap()
-    val audioNodes
+    val audioNodes: Map<String, AudioNode>
         get() = Object2ObjectMaps.unmodifiable(_nodes)
 
     val audioNodeList: List<AudioNode>
@@ -47,21 +46,29 @@ class BasaltClient internal constructor(val defaultWsPort: Int, val defaultBaseI
             return ObjectLists.unmodifiable(list)
         }
 
-    private val _players = PlayerMap()
-    val players
-        get() = Long2ObjectMaps.unmodifiable(_players)
+    internal val internalPlayers = PlayerHashMap()
+    val players: PlayerMap
+        get() = Long2ObjectMaps.unmodifiable(internalPlayers)
 
     val playerList: List<BasaltPlayer>
         get() {
-            val list = PlayerList(_players.size)
-            list.addAll(_players.values)
+            val list = PlayerList(internalPlayers.size)
+            list.addAll(internalPlayers.values)
             return ObjectLists.unmodifiable(list)
         }
 
     val bestNode: AudioNode?
         get() {
-            // todo load balancing
-            return _nodes.values.first()
+            var node: AudioNode? = null
+            var record: Int = Integer.MAX_VALUE
+            for (value in _nodes.values) {
+                val penalty = value.statistics?.getTotalPenalty(value) ?: Integer.MAX_VALUE - 1
+                if (penalty < record) {
+                    node = value
+                    record = penalty
+                }
+            }
+            return node
         }
 
     val trackUtil = AudioTrackUtil()
@@ -69,15 +76,15 @@ class BasaltClient internal constructor(val defaultWsPort: Int, val defaultBaseI
     fun addAudioNodes(vararg nodes: AudioNode) = nodes.forEach { _nodes[it.address] = it }
     fun removeAudioNodes(vararg nodes: AudioNode) = nodes.forEach { _nodes.remove(it.address) }
 
-    fun getPlayerById(guildId: Long): BasaltPlayer? = _players[guildId]
+    fun getPlayerById(guildId: Long): BasaltPlayer? = internalPlayers[guildId]
     fun newPlayer(guildId: Long, node: AudioNode? = bestNode): BasaltPlayer {
-        if (_players.containsKey(guildId)) {
+        if (internalPlayers.containsKey(guildId)) {
             LOGGER.warn("Cannot create duplicate players for Guild ID: {}", guildId)
             throw IllegalArgumentException(guildId.toString())
         }
         val player = BasaltPlayer(this, guildId)
         player.node = node
-        _players[guildId] = player
+        internalPlayers[guildId] = player
         return player
     }
 

@@ -123,12 +123,22 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
     }
 
     override fun onConnected(websocket: WebSocket, headers: MutableMap<String, MutableList<String>>) {
-        LOGGER.info("Connected to AudioNode: {}", websocket.uri.host)
+        LOGGER.info("Connected to AudioNode: {} on Port: {}", websocket.uri.host, websocket.uri.port)
+        client.internalPlayers.values.forEach {
+            player ->
+            player.node = this
+        }
     }
 
     override fun onDisconnected(websocket: WebSocket, serverCloseFrame: WebSocketFrame, clientCloseFrame: WebSocketFrame, closedByServer: Boolean) {
         val closer = if (closedByServer) "server" else "client"
         LOGGER.info("Disconnected from AudioNode: {} by {}!", websocket.uri.host, closer)
+        val best = client.bestNode
+        client.internalPlayers.values.forEach {
+            player ->
+            if (player.node == this)
+                player.node = best
+        }
     }
 
     override fun onError(socket: WebSocket, error: WebSocketException) {

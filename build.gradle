@@ -16,7 +16,7 @@
 
 buildscript {
     ext {
-        kotlin_version = '1.2.51'
+        kotlin_version = '1.2.61'
         dokka_version = '0.9.17'
         shadow_version = '2.0.4'
         versions_version = '0.20.0'
@@ -41,7 +41,7 @@ apply plugin: 'com.github.johnrengelman.shadow'
 apply plugin: 'com.github.ben-manes.versions'
 
 group 'basalt'
-version '0.5.0'
+version '0.6.0'
 description = 'A fast, reactive client implementation for Basalt and JDA.'
 sourceCompatibility = 10
 targetCompatibility = 10
@@ -85,7 +85,7 @@ task updateDocs(type: Copy, dependsOn: javadocJar) {
 }
 
 task wrapper(type: Wrapper) {
-    gradleVersion = '4.9'
+    gradleVersion = '4.10'
 }
 
 build {
@@ -112,8 +112,8 @@ ext {
     jsoniter_version = '0.9.23'
     javassist_version = '3.23.1-GA'
     fastutil_version = '8.2.1'
-    jda_version = '3.7.1_386'
-    reactor_core_version = '3.2.0.M2'
+    jda_version = '3.7.1_405'
+    reactor_core_version = '3.2.0.M4'
 }
 
 dependencies {
@@ -125,7 +125,6 @@ dependencies {
     compile group: 'it.unimi.dsi', name: 'fastutil', version: fastutil_version
     compile group: 'net.dv8tion', name: 'JDA', version: jda_version
     compile group: 'org.jetbrains.kotlin', name: 'kotlin-stdlib-jdk8', version: kotlin_version
-    compile group: 'io.sentry', name: 'sentry-logback', version: '1.7.5' // REMOVE FOR PRODUCTION
     compile group: 'io.projectreactor', name: 'reactor-core', version: reactor_core_version
 }
 

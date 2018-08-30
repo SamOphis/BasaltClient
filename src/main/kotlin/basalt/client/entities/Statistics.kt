@@ -28,4 +28,12 @@ class Statistics internal constructor() {
     var cores: Int = 0; internal set
     var systemLoad: Double = 0.toDouble(); internal set
     var basaltLoad: Double = 0.toDouble(); internal set
+
+    // todo server-side audio loss stats
+    fun getTotalPenalty(node: AudioNode): Int {
+        return if (!node.socket.isOpen)
+            Integer.MAX_VALUE - 1
+        else
+            playingPlayers + (Math.pow(1.05, 100 * systemLoad) * 10 - 10).toInt()
+    }
 }
