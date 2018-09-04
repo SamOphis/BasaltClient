@@ -216,7 +216,7 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
         }
         val node = node!!
         val key = "stopTrack${System.nanoTime()}"
-        val request = EmptyRequest("stop", guildId.toString())
+        val request = EmptyRequest(key, "stop", guildId.toString())
         node.socket.sendText(JsonStream.serialize(request))
         return node.eventBus
                 .filter { it["key"]?.toString() == key }
@@ -249,7 +249,7 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
         }
         val node = node!!
         val key = "destroy${System.nanoTime()}"
-        val request = EmptyRequest("destroy", guildId.toString())
+        val request = EmptyRequest(key, "destroy", guildId.toString())
         node.socket.sendText(JsonStream.serialize(request))
         return node.eventBus
                 .filter { it["key"]?.toString() == key }

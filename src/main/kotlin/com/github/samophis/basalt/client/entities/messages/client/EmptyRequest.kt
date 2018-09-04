@@ -17,4 +17,4 @@
 package com.github.samophis.basalt.client.entities.messages.client
 
 @Suppress("UNUSED")
-class EmptyRequest internal constructor(val op: String, val guildId: String)
+class EmptyRequest internal constructor(val key: String, val op: String, val guildId: String)
