@@ -45,7 +45,7 @@ apply plugin: 'maven-publish'
 apply plugin: 'com.jfrog.bintray'
 
 group 'com.github.samophis'
-version '0.6.2'
+version '0.6.3'
 description = 'A fast, reactive client implementation for Basalt and JDA.'
 sourceCompatibility = 10
 targetCompatibility = 10

@@ -114,7 +114,7 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
                 .doOnNext {
                     if (it["name"]?.toString() == "INITIALIZED") {
                         LOGGER.debug("Initialized the player for Guild ID: {}", guildId)
-                        state = State.CONNECTED
+                        state = State.INITIALIZED
                         return@doOnNext
                     }
                     LOGGER.warn("Failed to initialize player for Guild ID: {}", guildId)
