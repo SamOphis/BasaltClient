@@ -41,17 +41,15 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
 
     @Volatile var node: AudioNode? = null
         set(value) {
+            if (field == value)
+                return
             field?.let {
                 destroy().subscribe()
             }
-            if (value == null) {
-                // look back over next line
-                // set to not connected on disconnect, connect on connect for all players attached to a node
+            if (value == null)
                 state = State.NOT_CONNECTED
-            }
-            if (value?.socket?.isOpen == true) {
+            else if (value.socket.isOpen)
                 state = State.CONNECTED
-            }
             field = value
         }
 
@@ -131,7 +129,21 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.warn("Player for Guild ID: {} uninitialized!", guildId)
             throw IllegalStateException("Guild ID: $guildId | Not initialized!")
         }
-        node = client.bestNode
+        val best = client.bestNode
+        if (best != node) {
+            node = best
+            try {
+                val data = connect().block() ?: throw RuntimeException("No event returned upon re-connecting.")
+                if (data["name"]?.toString() == "ERROR")
+                    throw RuntimeException(data["data"]?.toString() ?: "No message.")
+            } catch (exc: Throwable) {
+                when (exc) {
+                    is IllegalArgumentException, is RuntimeException ->
+                        LOGGER.warn("Failed to seamlessly reconnect to AudioNode: {}, Message: {}", node?.socket?.uri?.host, exc.message)
+                    else -> {}
+                }
+            }
+        }
         val node = node!!
         val key = "loadIdentifiers${System.nanoTime()}"
         val request = LoadIdentifiersRequest(key, *identifiers)
@@ -161,7 +173,21 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.warn("Player for Guild ID: {} uninitialized!", guildId)
             throw IllegalStateException("Guild ID: $guildId | Not initialized!")
         }
-        node = client.bestNode
+        val best = client.bestNode
+        if (best != node) {
+            node = best
+            try {
+                val data = connect().block() ?: throw RuntimeException("No event returned upon re-connecting.")
+                if (data["name"]?.toString() == "ERROR")
+                    throw RuntimeException(data["data"]?.toString() ?: "No message.")
+            } catch (exc: Throwable) {
+                when (exc) {
+                    is IllegalArgumentException, is RuntimeException ->
+                        LOGGER.warn("Failed to seamlessly reconnect to AudioNode: {}, Message: {}", node?.socket?.uri?.host, exc.message)
+                    else -> {}
+                }
+            }
+        }
         val node = node!!
         val key = "playTracks${System.nanoTime()}"
         val request = PlayRequest(key, guildId.toString(), track, startTime)

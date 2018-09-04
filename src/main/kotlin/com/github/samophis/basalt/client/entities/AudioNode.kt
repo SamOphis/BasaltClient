@@ -96,13 +96,18 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
                 try {
                     val data = JsonIterator.deserialize(text)
                     val op = data["op"]!!.toString()
-                    if (op == "dispatch")
+                    if (op == "dispatch") {
+                        if (data["name"]?.toString() == "ERROR") {
+                            sink.error(RuntimeException(data["data"]?.toString() ?: "No message."))
+                            return
+                        }
                         sink.next(data)
+                    }
                     else {
                         val handler = handlers[op]
                         handler?.let {
                             try {
-                                it.invoke(websocket, data)
+                                it(websocket, data)
                             } catch (err: Throwable) {
                                 LOGGER.error("Error when invoking the SocketHandler for OP: {} and Content: {}", op, text)
                             }
@@ -111,33 +116,60 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
                         LOGGER.warn("Unhandled Response from the Basalt Server! OP: {}, Content: {}", op, text)
                     }
                 } catch (err: Throwable) {
-                    when (err) {
-                        is JsonException -> LOGGER.error("JsonException | Error when deserializing Basalt Server JSON Response! Content: {}, Message: {}", text, err.message)
-                        is KotlinNullPointerException -> LOGGER.error("KotlinNullPointerException | Missing Opcode Key from JSON Response! Content: {}, Message: {}", text, err.message)
-                        else -> LOGGER.error("{} | Error when sending a JSON Event! Content: {}, Message: {}", err.javaClass.simpleName, text, err.message)
-                    }
                     sink.error(err)
                 }
             }
         })
+    }.doOnError {
+        exc ->
+        when (exc) {
+            is JsonException -> LOGGER.error("Error when deserializing a Basalt Server JSON Response!", exc)
+            is KotlinNullPointerException -> LOGGER.error("Missing Opcode Key from Basalt Server JSON Response!", exc)
+            else -> LOGGER.error("{} | Error when handling a Basalt Server JSON Response! Message: {}",
+                    exc.javaClass.simpleName, exc.message)
+        }
     }
 
     override fun onConnected(websocket: WebSocket, headers: MutableMap<String, MutableList<String>>) {
         LOGGER.info("Connected to AudioNode: {} on Port: {}", websocket.uri.host, websocket.uri.port)
         client.internalPlayers.values.forEach {
             player ->
-            player.node = this
+            if (player.node != this) {
+                player.node = this
+                try {
+                    val data = player.connect().block() ?: throw RuntimeException("No event returned upon re-connecting.")
+                    if (data["name"]?.toString() == "ERROR")
+                        throw RuntimeException(data["data"]?.toString() ?: "No message.")
+                } catch (exc: Throwable) {
+                    when (exc) {
+                        is IllegalArgumentException, is RuntimeException ->
+                            LOGGER.warn("Failed to seamlessly reconnect to AudioNode: {}, Message: {}", websocket.uri.host, exc.message)
+                        else -> {}
+                    }
+                }
+            }
         }
     }
 
     override fun onDisconnected(websocket: WebSocket, serverCloseFrame: WebSocketFrame, clientCloseFrame: WebSocketFrame, closedByServer: Boolean) {
         val closer = if (closedByServer) "server" else "client"
         LOGGER.info("Disconnected from AudioNode: {} by {}!", websocket.uri.host, closer)
-        val best = client.bestNode
         client.internalPlayers.values.forEach {
             player ->
-            if (player.node == this)
-                player.node = best
+            if (player.node == this) {
+                player.node = client.bestNode
+                try {
+                    val data = player.connect().block() ?: throw RuntimeException("No event returned upon re-connecting.")
+                    if (data["name"]?.toString() == "ERROR")
+                        throw RuntimeException(data["data"]?.toString() ?: "No message.")
+                } catch (exc: Throwable) {
+                    when (exc) {
+                        is IllegalArgumentException, is RuntimeException ->
+                            LOGGER.warn("Failed to seamlessly reconnect to AudioNode: {}, Message: {}", websocket.uri.host, exc.message)
+                        else -> {}
+                    }
+                }
+            }
         }
     }
 
