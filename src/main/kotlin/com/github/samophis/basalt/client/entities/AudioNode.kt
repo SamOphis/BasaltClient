@@ -89,7 +89,7 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
         handlers.entries.forEach { this.handlers[it.key] = it.value }
     }
 
-    internal val eventBus = Flux.create<Any> {
+    val eventBus: Flux<Any> = Flux.create<Any> {
         sink ->
         socket.addListener(object: WebSocketAdapter() {
             override fun onTextMessage(websocket: WebSocket, text: String) {

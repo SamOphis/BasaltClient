@@ -131,6 +131,7 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.warn("Player for Guild ID: {} uninitialized!", guildId)
             throw IllegalStateException("Guild ID: $guildId | Not initialized!")
         }
+        node = client.bestNode
         val node = node!!
         val key = "loadIdentifiers${System.nanoTime()}"
         val request = LoadIdentifiersRequest(key, *identifiers)
@@ -160,6 +161,7 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.warn("Player for Guild ID: {} uninitialized!", guildId)
             throw IllegalStateException("Guild ID: $guildId | Not initialized!")
         }
+        node = client.bestNode
         val node = node!!
         val key = "playTracks${System.nanoTime()}"
         val request = PlayRequest(key, guildId.toString(), track, startTime)
