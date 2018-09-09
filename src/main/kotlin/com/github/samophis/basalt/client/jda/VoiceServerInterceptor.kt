@@ -44,9 +44,12 @@ class VoiceServerInterceptor(private val client: BasaltClient, jda: JDAImpl): So
             LOGGER.error("Non-existent VoiceState for Member ID: {} and Guild ID: {}", self.user.id, guild.id)
             throw IllegalStateException("Member ID: ${self.user.id}, Guild ID: ${guild.id} | VoiceState is non-existent!")
         }
-        client.newPlayer(id)
-                .connect(state.sessionId, content.getString("token"), content.getString("endpoint"))
-                .subscribe({ LOGGER.debug("Connected to Basalt!") }) { LOGGER.error("Error when connecting to Basalt!", it) }
+        val ignoredPlayer = client.getPlayerById(id)
+        if (ignoredPlayer == null) {
+            client.newPlayer(id)
+                    .connect(state.sessionId, content.getString("token"), content.getString("endpoint"))
+                    .subscribe({ LOGGER.debug("Connected to Basalt!") }) { LOGGER.error("Error when connecting to Basalt!", it) }
+        }
         return null
     }
 
