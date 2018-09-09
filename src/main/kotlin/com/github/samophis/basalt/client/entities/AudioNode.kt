@@ -17,12 +17,15 @@
 package com.github.samophis.basalt.client.entities
 
 import com.github.samophis.basalt.client.entities.builders.SocketHandlerMap
+import com.github.samophis.basalt.client.entities.events.*
 import com.github.samophis.basalt.client.entities.messages.server.PlayerUpdate
 import com.github.samophis.basalt.client.entities.messages.server.stats.StatsUpdate
 import com.jsoniter.JsonIterator
 import com.jsoniter.any.Any
 import com.jsoniter.spi.JsonException
 import com.neovisionaries.ws.client.*
+import com.sedmelluq.discord.lavaplayer.tools.FriendlyException
+import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
 
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -127,6 +130,51 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
             is KotlinNullPointerException -> LOGGER.error("Missing Opcode Key from Basalt Server JSON Response!", exc)
             else -> LOGGER.error("{} | Error when handling a Basalt Server JSON Response! Message: {}",
                     exc.javaClass.simpleName, exc.message)
+        }
+    }
+
+    init {
+        eventBus.subscribe {
+            data ->
+            when (data["name"]?.toString()) {
+                null -> {}
+                "TRACK_STARTED" -> {
+                    val player = client.getPlayerById(data["guildId"]!!.toLong())!!
+                    player.fireEvent(TrackStartEvent(player, player.guildId,
+                            client.trackUtil.decodeTrack(data["data"]!!["data"]!!.toString())))
+                }
+                "TRACK_ENDED" -> {
+                    val raw = data["data"]!!
+                    val player = client.getPlayerById(data["guildId"]!!.toLong())!!
+                    player.fireEvent(TrackEndEvent(player, player.guildId,
+                            client.trackUtil.decodeTrack(raw["track"]!!.toString()),
+                            AudioTrackEndReason.valueOf(raw["reason"]!!["name"]!!.toString())))
+                }
+                "TRACK_EXCEPTION" -> {
+                    val raw = data["data"]!!
+                    val player = client.getPlayerById(data["guildId"]!!.toLong())!!
+                    player.fireEvent(TrackExceptionEvent(player, player.guildId,
+                            client.trackUtil.decodeTrack(raw["track"]!!.toString()),
+                            raw["exception"]!!["message"]!!.toString(),
+                            FriendlyException.Severity.valueOf(raw["exception"]["severity"]!!.toString())))
+                }
+                "TRACK_STUCK" -> {
+                    val player = client.getPlayerById(data["guildId"]!!.toLong())!!
+                    player.fireEvent(TrackStuckEvent(player, player.guildId,
+                            client.trackUtil.decodeTrack(data["data"]!!["track"]!!.toString()),
+                            data["data"]["thresholdMs"]!!.toLong()))
+                }
+                "PLAYER_PAUSED" -> {
+                    val player = client.getPlayerById(data["guildId"]!!.toLong())!!
+                    val event = if (data["data"]!!.toBoolean()) {
+                        PlayerPauseEvent(player, player.guildId)
+                    }
+                    else {
+                        PlayerResumeEvent(player, player.guildId)
+                    }
+                    player.fireEvent(event)
+                }
+            }
         }
     }
 
