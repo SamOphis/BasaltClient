@@ -14,7 +14,11 @@
    limitations under the License.
  */
 
-package com.github.samophis.basalt.client.entities.messages.client
+package com.github.samophis.basalt.client.entities.events
 
-@Suppress("UNUSED")
-class EmptyRequest internal constructor(val key: String, val op: String, val guildId: String)
+import com.github.samophis.basalt.client.entities.BasaltPlayer
+
+interface Event {
+    val player: BasaltPlayer
+    val guildId: Long
+}

@@ -17,6 +17,10 @@
 package com.github.samophis.basalt.client.entities
 
 import com.github.samophis.basalt.client.util.AudioTrackUtil
+import com.jsoniter.JsonIterator
+import com.jsoniter.output.EncodingMode
+import com.jsoniter.output.JsonStream
+import com.jsoniter.spi.DecodingMode
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap
 import it.unimi.dsi.fastutil.longs.Long2ObjectMaps
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
@@ -90,5 +94,9 @@ class BasaltClient internal constructor(val defaultWsPort: Int, val defaultBaseI
 
     companion object {
         private val LOGGER = LoggerFactory.getLogger(BasaltClient::class.java)
+        init {
+            JsonStream.setMode(EncodingMode.DYNAMIC_MODE)
+            JsonIterator.setMode(DecodingMode.DYNAMIC_MODE_AND_MATCH_FIELD_WITH_HASH)
+        }
     }
 }

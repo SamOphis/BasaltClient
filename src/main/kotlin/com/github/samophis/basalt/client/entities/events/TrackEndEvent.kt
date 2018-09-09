@@ -14,7 +14,12 @@
    limitations under the License.
  */
 
-package com.github.samophis.basalt.client.entities.messages.client
+package com.github.samophis.basalt.client.entities.events
+
+import com.github.samophis.basalt.client.entities.BasaltPlayer
+import com.sedmelluq.discord.lavaplayer.track.AudioTrack
+import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
 
 @Suppress("UNUSED")
-class EmptyRequest internal constructor(val key: String, val op: String, val guildId: String)
+class TrackEndEvent internal constructor(override val player: BasaltPlayer, override val guildId: Long,
+                                         val track: AudioTrack, val reason: AudioTrackEndReason): Event

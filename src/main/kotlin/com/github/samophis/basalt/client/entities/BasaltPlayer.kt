@@ -16,6 +16,8 @@
 
 package com.github.samophis.basalt.client.entities
 
+import com.github.samophis.basalt.client.entities.events.AudioEventListener
+import com.github.samophis.basalt.client.entities.events.Event
 import com.github.samophis.basalt.client.entities.messages.client.*
 import com.github.samophis.basalt.client.entities.messages.server.tracks.AudioLoadResult
 import com.jsoniter.JsonIterator
@@ -23,6 +25,8 @@ import com.jsoniter.any.Any
 import com.jsoniter.output.JsonStream
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import it.unimi.dsi.fastutil.objects.ObjectArrayList
+import it.unimi.dsi.fastutil.objects.ObjectList
+import it.unimi.dsi.fastutil.objects.ObjectLists
 import org.slf4j.LoggerFactory
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
@@ -41,17 +45,15 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
 
     @Volatile var node: AudioNode? = null
         set(value) {
+            if (field == value)
+                return
             field?.let {
                 destroy().subscribe()
             }
-            if (value == null) {
-                // look back over next line
-                // set to not connected on disconnect, connect on connect for all players attached to a node
+            if (value == null)
                 state = State.NOT_CONNECTED
-            }
-            if (value?.socket?.isOpen == true) {
+            else if (value.socket.isOpen)
                 state = State.CONNECTED
-            }
             field = value
         }
 
@@ -79,6 +81,17 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
 
     @Volatile var volume: Int = 100
         private set
+
+    private val _eventListeners = ObjectArrayList<AudioEventListener>()
+    val eventListeners: ObjectList<AudioEventListener>
+        get() = ObjectLists.unmodifiable(_eventListeners)
+
+    fun addEventListener(listener: AudioEventListener) = _eventListeners.add(listener)
+    internal fun fireEvent(event: Event) {
+        _eventListeners.forEach {
+            it.onEvent(event)
+        }
+    }
 
     fun connect(sessionId: String? = this.sessionId, token: String? = this.token, endpoint: String? = this.endpoint): Mono<Any> {
         if (node == null) {
@@ -131,7 +144,21 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.warn("Player for Guild ID: {} uninitialized!", guildId)
             throw IllegalStateException("Guild ID: $guildId | Not initialized!")
         }
-        node = client.bestNode
+        val best = client.bestNode
+        if (best != node) {
+            node = best
+            try {
+                val data = connect().block() ?: throw RuntimeException("No event returned upon re-connecting.")
+                if (data["name"]?.toString() == "ERROR")
+                    throw RuntimeException(data["data"]?.toString() ?: "No message.")
+            } catch (exc: Throwable) {
+                when (exc) {
+                    is IllegalArgumentException, is RuntimeException ->
+                        LOGGER.warn("Failed to seamlessly reconnect to AudioNode: {}, Message: {}", node?.socket?.uri?.host, exc.message)
+                    else -> {}
+                }
+            }
+        }
         val node = node!!
         val key = "loadIdentifiers${System.nanoTime()}"
         val request = LoadIdentifiersRequest(key, *identifiers)
@@ -161,7 +188,21 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.warn("Player for Guild ID: {} uninitialized!", guildId)
             throw IllegalStateException("Guild ID: $guildId | Not initialized!")
         }
-        node = client.bestNode
+        val best = client.bestNode
+        if (best != node) {
+            node = best
+            try {
+                val data = connect().block() ?: throw RuntimeException("No event returned upon re-connecting.")
+                if (data["name"]?.toString() == "ERROR")
+                    throw RuntimeException(data["data"]?.toString() ?: "No message.")
+            } catch (exc: Throwable) {
+                when (exc) {
+                    is IllegalArgumentException, is RuntimeException ->
+                        LOGGER.warn("Failed to seamlessly reconnect to AudioNode: {}, Message: {}", node?.socket?.uri?.host, exc.message)
+                    else -> {}
+                }
+            }
+        }
         val node = node!!
         val key = "playTracks${System.nanoTime()}"
         val request = PlayRequest(key, guildId.toString(), track, startTime)
@@ -190,7 +231,7 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
         }
         val node = node!!
         val key = "stopTrack${System.nanoTime()}"
-        val request = EmptyRequest("stop", guildId.toString())
+        val request = EmptyRequest(key, "stop", guildId.toString())
         node.socket.sendText(JsonStream.serialize(request))
         return node.eventBus
                 .filter { it["key"]?.toString() == key }
@@ -223,7 +264,7 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
         }
         val node = node!!
         val key = "destroy${System.nanoTime()}"
-        val request = EmptyRequest("destroy", guildId.toString())
+        val request = EmptyRequest(key, "destroy", guildId.toString())
         node.socket.sendText(JsonStream.serialize(request))
         return node.eventBus
                 .filter { it["key"]?.toString() == key }
