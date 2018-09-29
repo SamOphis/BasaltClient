@@ -27,11 +27,7 @@ class VoiceServerInterceptor(private val client: BasaltClient, jda: JDAImpl): So
         LOGGER.debug(content.toString())
         val id = content.getLong("guild_id")
         val jda = api.get()
-        if (jda == null) {
-            LOGGER.error("JDA API reference garbage collected? wtf this should never happen. Guild ID: {}", id)
-            throw IllegalStateException("JDA API reference garbage collected! This should never happen normally! Guild ID: $id")
-        }
-        if (jda.guildLock.isLocked(id))
+        if (jda.guildSetupController.isLocked(id))
             return id
         val guild = jda.getGuildById(id)
         if (guild == null) {

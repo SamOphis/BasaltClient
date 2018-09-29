@@ -100,9 +100,48 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
                     val data = JsonIterator.deserialize(text)
                     val op = data["op"]!!.toString()
                     if (op == "dispatch") {
-                        if (data["name"]?.toString() == "ERROR") {
-                            sink.error(RuntimeException(data["data"]?.toString() ?: "No message."))
-                            return
+                        when (data["name"]?.toString()) {
+                            null -> {}
+                            "ERROR" -> {
+                                sink.error(RuntimeException(data["data"]?.toString() ?: "No message."))
+                                return
+                            }
+                            "TRACK_STARTED" -> {
+                                val player = client.getPlayerById(data["guildId"]!!.toLong())!!
+                                player.fireEvent(TrackStartEvent(player, player.guildId,
+                                        client.trackUtil.decodeTrack(data["data"]!!["data"]!!.toString())))
+                            }
+                            "TRACK_ENDED" -> {
+                                val raw = data["data"]!!
+                                val player = client.getPlayerById(data["guildId"]!!.toLong())!!
+                                player.fireEvent(TrackEndEvent(player, player.guildId,
+                                        client.trackUtil.decodeTrack(raw["track"]!!.toString()),
+                                        AudioTrackEndReason.valueOf(raw["reason"]!!["name"]!!.toString())))
+                            }
+                            "TRACK_EXCEPTION" -> {
+                                val raw = data["data"]!!
+                                val player = client.getPlayerById(data["guildId"]!!.toLong())!!
+                                player.fireEvent(TrackExceptionEvent(player, player.guildId,
+                                        client.trackUtil.decodeTrack(raw["track"]!!.toString()),
+                                        raw["exception"]!!["message"]!!.toString(),
+                                        FriendlyException.Severity.valueOf(raw["exception"]["severity"]!!.toString())))
+                            }
+                            "TRACK_STUCK" -> {
+                                val player = client.getPlayerById(data["guildId"]!!.toLong())!!
+                                player.fireEvent(TrackStuckEvent(player, player.guildId,
+                                        client.trackUtil.decodeTrack(data["data"]!!["track"]!!.toString()),
+                                        data["data"]["thresholdMs"]!!.toLong()))
+                            }
+                            "PLAYER_PAUSED" -> {
+                                val player = client.getPlayerById(data["guildId"]!!.toLong())!!
+                                val event = if (data["data"]!!.toBoolean()) {
+                                    PlayerPauseEvent(player, player.guildId)
+                                }
+                                else {
+                                    PlayerResumeEvent(player, player.guildId)
+                                }
+                                player.fireEvent(event)
+                            }
                         }
                         sink.next(data)
                     }
@@ -130,51 +169,6 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
             is KotlinNullPointerException -> LOGGER.error("Missing Opcode Key from Basalt Server JSON Response!", exc)
             else -> LOGGER.error("{} | Error when handling a Basalt Server JSON Response! Message: {}",
                     exc.javaClass.simpleName, exc.message)
-        }
-    }
-
-    init {
-        eventBus.subscribe {
-            data ->
-            when (data["name"]?.toString()) {
-                null -> {}
-                "TRACK_STARTED" -> {
-                    val player = client.getPlayerById(data["guildId"]!!.toLong())!!
-                    player.fireEvent(TrackStartEvent(player, player.guildId,
-                            client.trackUtil.decodeTrack(data["data"]!!["data"]!!.toString())))
-                }
-                "TRACK_ENDED" -> {
-                    val raw = data["data"]!!
-                    val player = client.getPlayerById(data["guildId"]!!.toLong())!!
-                    player.fireEvent(TrackEndEvent(player, player.guildId,
-                            client.trackUtil.decodeTrack(raw["track"]!!.toString()),
-                            AudioTrackEndReason.valueOf(raw["reason"]!!["name"]!!.toString())))
-                }
-                "TRACK_EXCEPTION" -> {
-                    val raw = data["data"]!!
-                    val player = client.getPlayerById(data["guildId"]!!.toLong())!!
-                    player.fireEvent(TrackExceptionEvent(player, player.guildId,
-                            client.trackUtil.decodeTrack(raw["track"]!!.toString()),
-                            raw["exception"]!!["message"]!!.toString(),
-                            FriendlyException.Severity.valueOf(raw["exception"]["severity"]!!.toString())))
-                }
-                "TRACK_STUCK" -> {
-                    val player = client.getPlayerById(data["guildId"]!!.toLong())!!
-                    player.fireEvent(TrackStuckEvent(player, player.guildId,
-                            client.trackUtil.decodeTrack(data["data"]!!["track"]!!.toString()),
-                            data["data"]["thresholdMs"]!!.toLong()))
-                }
-                "PLAYER_PAUSED" -> {
-                    val player = client.getPlayerById(data["guildId"]!!.toLong())!!
-                    val event = if (data["data"]!!.toBoolean()) {
-                        PlayerPauseEvent(player, player.guildId)
-                    }
-                    else {
-                        PlayerResumeEvent(player, player.guildId)
-                    }
-                    player.fireEvent(event)
-                }
-            }
         }
     }
 

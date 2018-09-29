@@ -17,6 +17,15 @@
 package com.github.samophis.basalt.client.util
 
 import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager
+import com.sedmelluq.discord.lavaplayer.source.bandcamp.BandcampAudioSourceManager
+import com.sedmelluq.discord.lavaplayer.source.beam.BeamAudioSourceManager
+import com.sedmelluq.discord.lavaplayer.source.http.HttpAudioSourceManager
+import com.sedmelluq.discord.lavaplayer.source.local.LocalAudioSourceManager
+import com.sedmelluq.discord.lavaplayer.source.nico.NicoAudioSourceManager
+import com.sedmelluq.discord.lavaplayer.source.soundcloud.SoundCloudAudioSourceManager
+import com.sedmelluq.discord.lavaplayer.source.twitch.TwitchStreamAudioSourceManager
+import com.sedmelluq.discord.lavaplayer.source.vimeo.VimeoAudioSourceManager
+import com.sedmelluq.discord.lavaplayer.source.youtube.YoutubeAudioSourceManager
 import com.sedmelluq.discord.lavaplayer.tools.io.MessageInput
 import com.sedmelluq.discord.lavaplayer.tools.io.MessageOutput
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack
@@ -58,6 +67,13 @@ class AudioTrackUtil internal constructor() {
         private val LOGGER: Logger = LoggerFactory.getLogger(AudioTrackUtil::class.java)
         /** @suppress */
         init {
+            MANAGER.registerSourceManager(YoutubeAudioSourceManager(true))
+            MANAGER.registerSourceManager(SoundCloudAudioSourceManager(true))
+            MANAGER.registerSourceManager(TwitchStreamAudioSourceManager())
+            MANAGER.registerSourceManager(BandcampAudioSourceManager())
+            MANAGER.registerSourceManager(VimeoAudioSourceManager())
+            MANAGER.registerSourceManager(BeamAudioSourceManager())
+            MANAGER.registerSourceManager(HttpAudioSourceManager())
             Runtime.getRuntime().addShutdownHook(Thread {MANAGER::shutdown})
         }
     }
