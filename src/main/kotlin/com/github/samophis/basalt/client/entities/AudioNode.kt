@@ -116,7 +116,7 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
                                 val player = client.getPlayerById(data["guildId"]!!.toLong())!!
                                 player.fireEvent(TrackEndEvent(player, player.guildId,
                                         client.trackUtil.decodeTrack(raw["track"]!!.toString()),
-                                        AudioTrackEndReason.valueOf(raw["reason"]!!["name"]!!.toString())))
+                                        AudioTrackEndReason.valueOf(raw["reason"]!!["type"]!!.toString())))
                             }
                             "TRACK_EXCEPTION" -> {
                                 val raw = data["data"]!!
