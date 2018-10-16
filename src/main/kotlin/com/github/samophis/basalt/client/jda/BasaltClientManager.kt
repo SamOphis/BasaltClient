@@ -18,13 +18,13 @@ package com.github.samophis.basalt.client.jda
 
 import com.github.samophis.basalt.client.entities.BasaltClient
 import com.github.samophis.basalt.client.entities.builders.BasaltClientBuilder
-import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
+import gnu.trove.map.hash.TLongObjectHashMap
 import net.dv8tion.jda.core.JDABuilder
 import org.slf4j.LoggerFactory
 
 class BasaltClientManager private constructor() {
     companion object {
-        private val CLIENTS = Long2ObjectOpenHashMap<BasaltClient>()
+        private val CLIENTS = TLongObjectHashMap<BasaltClient>()
         private val LOGGER = LoggerFactory.getLogger(BasaltClientManager::class.java)
         private var isShutdown = false
 
@@ -33,12 +33,12 @@ class BasaltClientManager private constructor() {
                 this.userId = userId
                 build()
             }
-            CLIENTS[userId] = client
+            CLIENTS.put(userId, client)
             return client
         }
 
         fun addClient(client: BasaltClient): BasaltClient {
-            CLIENTS[client.userId] = client
+            CLIENTS.put(client.userId, client)
             return client
         }
 

@@ -121,7 +121,6 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
         val key = "initialize${System.nanoTime()}"
         val request = InitializeRequest(key, guildId.toString(), sessionId, token, endpoint)
         val text = JsonStream.serialize(request)
-        val node = node!!
         val future = wrapFuture("$guildId:$key") { data ->
             if (data["name"]?.toString() == "INITIALIZED") {
                 LOGGER.debug("Initialized player for Guild ID: {}", guildId)

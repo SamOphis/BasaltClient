@@ -44,7 +44,8 @@ class VoiceServerInterceptor(private val client: BasaltClient, jda: JDAImpl): So
         if (ignoredPlayer == null) {
             client.newPlayer(id)
                     .connect(state.sessionId, content.getString("token"), content.getString("endpoint"))
-                    .subscribe({ LOGGER.debug("Connected to Basalt!") }) { LOGGER.error("Error when connecting to Basalt!", it) }
+                    .thenAccept { LOGGER.debug("Connected to Basalt!") }
+                    .exceptionally { LOGGER.error("Error when connecting to Basalt!", it); null }
         }
         return null
     }
