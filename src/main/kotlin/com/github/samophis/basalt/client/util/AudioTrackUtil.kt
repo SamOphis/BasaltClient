@@ -20,8 +20,6 @@ import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager
 import com.sedmelluq.discord.lavaplayer.source.bandcamp.BandcampAudioSourceManager
 import com.sedmelluq.discord.lavaplayer.source.beam.BeamAudioSourceManager
 import com.sedmelluq.discord.lavaplayer.source.http.HttpAudioSourceManager
-import com.sedmelluq.discord.lavaplayer.source.local.LocalAudioSourceManager
-import com.sedmelluq.discord.lavaplayer.source.nico.NicoAudioSourceManager
 import com.sedmelluq.discord.lavaplayer.source.soundcloud.SoundCloudAudioSourceManager
 import com.sedmelluq.discord.lavaplayer.source.twitch.TwitchStreamAudioSourceManager
 import com.sedmelluq.discord.lavaplayer.source.vimeo.VimeoAudioSourceManager
@@ -29,20 +27,20 @@ import com.sedmelluq.discord.lavaplayer.source.youtube.YoutubeAudioSourceManager
 import com.sedmelluq.discord.lavaplayer.tools.io.MessageInput
 import com.sedmelluq.discord.lavaplayer.tools.io.MessageOutput
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack
-import it.unimi.dsi.fastutil.io.FastByteArrayInputStream
-import it.unimi.dsi.fastutil.io.FastByteArrayOutputStream
 import net.iharder.Base64
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 
 class AudioTrackUtil internal constructor() {
     @Throws(IOException::class)
     fun encodeTrack(track: AudioTrack): String {
         try {
-            val out = FastByteArrayOutputStream()
+            val out = ByteArrayOutputStream()
             MANAGER.encodeTrack(MessageOutput(out), track)
-            return Base64.encodeBytes(out.array)
+            return Base64.encodeBytes(out.toByteArray())
         } catch (err: IOException) {
             LOGGER.error("Error when encoding AudioTrack!", err)
             throw err
@@ -52,7 +50,7 @@ class AudioTrackUtil internal constructor() {
     @Throws(IOException::class)
     fun decodeTrack(data: String): AudioTrack {
         try {
-            return MANAGER.decodeTrack(MessageInput(FastByteArrayInputStream(Base64.decode(data)))).decodedTrack
+            return MANAGER.decodeTrack(MessageInput(ByteArrayInputStream(Base64.decode(data)))).decodedTrack
         } catch (err: IOException) {
             LOGGER.error("Error when decoding AudioTrack!", err)
             throw err

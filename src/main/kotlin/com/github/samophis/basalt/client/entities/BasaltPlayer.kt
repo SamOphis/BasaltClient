@@ -24,12 +24,13 @@ import com.jsoniter.JsonIterator
 import com.jsoniter.any.Any
 import com.jsoniter.output.JsonStream
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack
-import it.unimi.dsi.fastutil.objects.ObjectArrayList
-import it.unimi.dsi.fastutil.objects.ObjectList
-import it.unimi.dsi.fastutil.objects.ObjectLists
+import io.vertx.core.Future
+
+import me.escoffier.vertx.completablefuture.VertxCompletableFuture
 import org.slf4j.LoggerFactory
-import reactor.core.publisher.Flux
-import reactor.core.publisher.Mono
+import java.util.*
+import java.util.concurrent.CompletionStage
+import kotlin.collections.ArrayList
 import kotlin.math.min
 
 @Suppress("UNUSED")
@@ -48,11 +49,11 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             if (field == value)
                 return
             field?.let {
-                destroy().subscribe()
+                destroy()
             }
             if (value == null)
                 state = State.NOT_CONNECTED
-            else if (value.socket.isOpen)
+            else if (value.isOpen.get())
                 state = State.CONNECTED
             field = value
         }
@@ -82,9 +83,9 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
     @Volatile var volume: Int = 100
         private set
 
-    private val _eventListeners = ObjectArrayList<AudioEventListener>()
-    val eventListeners: ObjectList<AudioEventListener>
-        get() = ObjectLists.unmodifiable(_eventListeners)
+    private val _eventListeners = ArrayList<AudioEventListener>()
+    val eventListeners: List<AudioEventListener>
+        get() = Collections.unmodifiableList(_eventListeners)
 
     fun addEventListener(listener: AudioEventListener) = _eventListeners.add(listener)
     internal fun fireEvent(event: Event) {
@@ -93,7 +94,7 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
         }
     }
 
-    fun connect(sessionId: String? = this.sessionId, token: String? = this.token, endpoint: String? = this.endpoint): Mono<Any> {
+    fun connect(sessionId: String? = this.sessionId, token: String? = this.token, endpoint: String? = this.endpoint): CompletionStage<Any> {
         if (node == null) {
             LOGGER.error("Node is null when attempting to initialize a player for Guild ID: {}", guildId)
             throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
@@ -120,22 +121,19 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
         val key = "initialize${System.nanoTime()}"
         val request = InitializeRequest(key, guildId.toString(), sessionId, token, endpoint)
         val text = JsonStream.serialize(request)
-        val node = node!!
-        node.socket.sendText(text)
-        return node.eventBus
-                .filter { it["key"]?.toString() == key }
-                .doOnNext {
-                    if (it["name"]?.toString() == "INITIALIZED") {
-                        LOGGER.debug("Initialized the player for Guild ID: {}", guildId)
-                        state = State.INITIALIZED
-                        return@doOnNext
-                    }
-                    LOGGER.warn("Failed to initialize player for Guild ID: {}", guildId)
-                }
-                .next()
+        val future = wrapFuture(key) { data ->
+            if (data["name"]?.toString() == "INITIALIZED") {
+                LOGGER.debug("Initialized player for Guild ID: {}", guildId)
+                state = State.INITIALIZED
+            } else {
+                LOGGER.warn("Failed to initialize player for Guild ID: {}", guildId)
+            }
+        }
+        sendData(text)
+        return future
     }
 
-    fun loadIdentifiers(vararg identifiers: String): Flux<AudioLoadResult> {
+    fun loadIdentifiers(vararg identifiers: String): CompletionStage<List<AudioLoadResult>> {
         if (node == null) {
             LOGGER.error("Node is null when attempting to load tracks, from Guild ID: {}", guildId)
             throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
@@ -147,39 +145,68 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
         val best = client.bestNode
         if (best != node) {
             node = best
-            try {
-                val data = connect().block() ?: throw RuntimeException("No event returned upon re-connecting.")
-                if (data["name"]?.toString() == "ERROR")
-                    throw RuntimeException(data["data"]?.toString() ?: "No message.")
-            } catch (exc: Throwable) {
-                when (exc) {
-                    is IllegalArgumentException, is RuntimeException ->
-                        LOGGER.warn("Failed to seamlessly reconnect to AudioNode: {}, Message: {}", node?.socket?.uri?.host, exc.message)
-                    else -> {}
+            return connect().thenCompose { any ->
+                if (any["name"]?.toString() == "ERROR")
+                    throw RuntimeException(any["data"]?.toString() ?: "No message.")
+
+                val key = "loadIdentifiers${System.nanoTime()}"
+                val request = LoadIdentifiersRequest(key, *identifiers)
+                val text = JsonStream.serialize(request)
+
+                val future = Future.future<List<AudioLoadResult>>()
+                val list = ArrayList<AudioLoadResult>()
+                val consumer = client.eventBus.consumer<Any>(key)
+                consumer.handler { msg ->
+                    val body = msg.body()
+                    when (body["name"]?.toString()) {
+                        null -> throw UnsupportedOperationException("Missing name from JSON Response!")
+                        "LOAD_IDENTIFIERS_CHUNK" -> {
+                            LOGGER.debug("Received identifier load chunk for Guild ID: {}", guildId)
+                            body.get("data").forEach {
+                                list.add(JsonIterator.deserialize(it.toString(), AudioLoadResult::class.java))
+                            }
+                        }
+                        "CHUNKS_FINISHED" -> {
+                            LOGGER.debug("Requested identifiers fully loaded for Guild ID: {}", guildId)
+                            consumer.unregister()
+                            future.complete(list)
+                        }
+                    }
                 }
+                sendData(text)
+                VertxCompletableFuture.from(client.vertx, future)
             }
         }
-        val node = node!!
         val key = "loadIdentifiers${System.nanoTime()}"
         val request = LoadIdentifiersRequest(key, *identifiers)
         val text = JsonStream.serialize(request)
-        node.socket.sendText(text)
-        return node.eventBus
-                .filter { it["key"]?.toString() == key && it["name"]?.toString() == "LOAD_IDENTIFIERS_CHUNK" }
-                .flatMapIterable {
-                    any ->
-                    // no chance of error here
-                    LOGGER.debug("Received identifier load chunk for Guild ID: {}", guildId)
-                    val data = any.get("data")
-                    val list = ObjectArrayList<AudioLoadResult>(data.size())
-                    data.forEach { list.add(JsonIterator.deserialize(it.toString(), AudioLoadResult::class.java)) }
-                    list
-                }
 
+        val future = Future.future<List<AudioLoadResult>>()
+        val list = ArrayList<AudioLoadResult>()
+        val consumer = client.eventBus.consumer<String>(key)
+        consumer.handler { msg ->
+            val body = JsonIterator.deserialize(msg.body())
+            when (body["name"]?.toString()) {
+                null -> throw UnsupportedOperationException("Missing name from JSON Response!")
+                "LOAD_IDENTIFIERS_CHUNK" -> {
+                    LOGGER.debug("Received identifier load chunk for Guild ID: {}", guildId)
+                    body.get("data").forEach {
+                        list.add(JsonIterator.deserialize(it.toString(), AudioLoadResult::class.java))
+                    }
+                }
+                "CHUNKS_FINISHED" -> {
+                    LOGGER.debug("Requested identifiers fully loaded for Guild ID: {}", guildId)
+                    consumer.unregister()
+                    future.complete(list)
+                }
+            }
+        }
+        sendData(text)
+        return VertxCompletableFuture.from(client.vertx, future)
     }
 
-    fun playTrack(track: AudioTrack, startTime: Long? = 0): Mono<Any> = playTrack(client.trackUtil.encodeTrack(track), startTime)
-    fun playTrack(track: String, startTime: Long? = 0): Mono<Any> {
+    fun playTrack(track: AudioTrack, startTime: Long? = 0): CompletionStage<Any> = playTrack(client.trackUtil.encodeTrack(track), startTime)
+    fun playTrack(track: String, startTime: Long? = 0): CompletionStage<Any> {
         if (node == null) {
             LOGGER.error("Node is null when attempting to play audio to Guild ID: {}", guildId)
             throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
@@ -191,36 +218,38 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
         val best = client.bestNode
         if (best != node) {
             node = best
-            try {
-                val data = connect().block() ?: throw RuntimeException("No event returned upon re-connecting.")
-                if (data["name"]?.toString() == "ERROR")
-                    throw RuntimeException(data["data"]?.toString() ?: "No message.")
-            } catch (exc: Throwable) {
-                when (exc) {
-                    is IllegalArgumentException, is RuntimeException ->
-                        LOGGER.warn("Failed to seamlessly reconnect to AudioNode: {}, Message: {}", node?.socket?.uri?.host, exc.message)
-                    else -> {}
-                }
-            }
+            return connect()
+                    .thenCompose {
+                        any ->
+                        if (any["name"]?.toString() == "ERROR")
+                            throw RuntimeException(any["data"]?.toString() ?: "No message.")
+                        val key = "playTracks${System.nanoTime()}"
+                        val request = PlayRequest(key, guildId.toString(), track, startTime)
+                        val future = wrapFuture(key) { data ->
+                            if (data["name"]?.toString() == "TRACK_STARTED") {
+                                LOGGER.debug("Started track for Guild ID: {}", guildId)
+                                return@wrapFuture
+                            }
+                            LOGGER.warn("Failed to start track for Guild ID: {}, JSON Content: {}", data.toString())
+                        }
+                        sendData(JsonStream.serialize(request))
+                        future
+                    }
         }
-        val node = node!!
         val key = "playTracks${System.nanoTime()}"
         val request = PlayRequest(key, guildId.toString(), track, startTime)
-        node.socket.sendText(JsonStream.serialize(request))
-        return node.eventBus
-                .filter { it["key"]?.toString() == key }
-                .doOnNext {
-                    any ->
-                    if (any["name"]?.toString() == "TRACK_STARTED") {
-                        LOGGER.debug("Started track for Guild ID: {}", guildId)
-                        return@doOnNext
-                    }
-                    LOGGER.warn("Failed to start track for Guild ID: {}", guildId)
-                }
-                .next()
+        val future = wrapFuture(key) { data ->
+            if (data["name"]?.toString() == "TRACK_STARTED") {
+                LOGGER.debug("Started track for Guild ID: {}", guildId)
+                return@wrapFuture
+            }
+            LOGGER.warn("Failed to start track for Guild ID: {}, JSON Content: {}", data.toString())
+        }
+        sendData(JsonStream.serialize(request))
+        return future
     }
 
-    fun stopTrack(): Mono<Any> {
+    fun stopTrack(): CompletionStage<Any> {
         if (node == null) {
             LOGGER.error("Node is null when attempting to stop the current track for Guild ID: {}", guildId)
             throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
@@ -229,24 +258,20 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.warn("Player for Guild ID: {} uninitialized!", guildId)
             throw IllegalStateException("Guild ID: $guildId | Not initialized!")
         }
-        val node = node!!
         val key = "stopTrack${System.nanoTime()}"
         val request = EmptyRequest(key, "stop", guildId.toString())
-        node.socket.sendText(JsonStream.serialize(request))
-        return node.eventBus
-                .filter { it["key"]?.toString() == key }
-                .doOnNext {
-                    any ->
-                    if (any["name"]?.toString() == "TRACK_ENDED") {
-                        LOGGER.debug("Successfully stopped playing audio for Guild ID: {}", guildId)
-                        return@doOnNext
-                    }
-                    LOGGER.warn("Failed to stop the player for Guild ID: {}", guildId)
-                }
-                .next()
+        val future = wrapFuture(key) { data ->
+            if (data["name"]?.toString() == "TRACK_ENDED") {
+                LOGGER.debug("Successfully stopped audio playback for Guild ID: {}", guildId)
+                return@wrapFuture
+            }
+            LOGGER.warn("Failed to stop audio playback for Guild ID: {}", guildId)
+        }
+        sendData(JsonStream.serialize(request))
+        return future
     }
 
-    fun destroy(): Mono<Any> {
+    fun destroy(): CompletionStage<Any> {
         if (node == null) {
             LOGGER.error("Node is null when attempting to destroy the player for Guild ID: {}", guildId)
             throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
@@ -262,25 +287,21 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             }
             else -> {}
         }
-        val node = node!!
         val key = "destroy${System.nanoTime()}"
         val request = EmptyRequest(key, "destroy", guildId.toString())
-        node.socket.sendText(JsonStream.serialize(request))
-        return node.eventBus
-                .filter { it["key"]?.toString() == key }
-                .doOnNext {
-                    any ->
-                    if (any["name"]?.toString() == "DESTROYED") {
-                        LOGGER.debug("Destroyed player for Guild ID: {}", guildId)
-                        state = State.CONNECTED
-                        return@doOnNext
-                    }
-                    LOGGER.warn("Failed to destroy player for Guild ID: {}, JSON Content: {}", guildId, any.toString())
-                }
-                .next()
+        val future = wrapFuture(key) { data ->
+            if (data["name"]?.toString() == "DESTROYED") {
+                LOGGER.debug("Destroyed player for Guild ID: {}", guildId)
+                state = State.CONNECTED
+                return@wrapFuture
+            }
+            LOGGER.warn("Failed to destroy player for Guild ID: {}, JSON Content: {}", guildId, data.toString())
+        }
+        sendData(JsonStream.serialize(request))
+        return future
     }
 
-    fun seek(position: Long): Mono<Any> {
+    fun seek(position: Long): CompletionStage<Any> {
         if (node == null) {
             LOGGER.error("Node is null when attempting to seek to a new position for Guild ID: {}", guildId)
             throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
@@ -289,25 +310,21 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.warn("Player for Guild ID: {} uninitialized!", guildId)
             throw IllegalStateException("Guild ID: $guildId | Not initialized!")
         }
-        val node = node!!
-        val key = "seek${System.nanoTime()}$position"
+        val key = "seek${System.nanoTime()}"
         val request = SeekRequest(key, guildId.toString(), position)
-        node.socket.sendText(JsonStream.serialize(request))
-        return node.eventBus
-                .filter { it["key"]?.toString() == key }
-                .doOnNext {
-                    any ->
-                    if (any["name"]?.toString() == "POSITION_UPDATE") {
-                        LOGGER.debug("Successfully seeked to Position: {} for Guild ID: {}", position, guildId)
-                        this.position = any["data"]?.toLong() ?: position
-                        return@doOnNext
-                    }
-                    LOGGER.warn("Failed to seek for Guild ID: {}, JSON Content: {}", guildId, any.toString())
-                }
-                .next()
+        val future = wrapFuture(key) { data ->
+            if (data["name"]?.toString() == "POSITION_UPDATE") {
+                LOGGER.debug("Successfully seeked to Position: {}ms for Guild ID: {}", position, guildId)
+                this.position = position
+                return@wrapFuture
+            }
+            LOGGER.warn("Failed to seek for Guild ID: {}, JSON Content: {}", guildId, data.toString())
+        }
+        sendData(JsonStream.serialize(request))
+        return future
     }
 
-    fun setVolume(volume: Int): Mono<Any> {
+    fun setVolume(volume: Int): CompletionStage<Any> {
         if (node == null) {
             LOGGER.error("Node is null when attempting to set the volume for Guild ID: {}", guildId)
             throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
@@ -316,27 +333,24 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.warn("Player for Guild ID: {} uninitialized!", guildId)
             throw IllegalStateException("Guild ID: $guildId | Not initialized!")
         }
-        val node = node!!
         val key = "volume${System.nanoTime()}$volume"
         val request = SetVolumeRequest(key, guildId.toString(), volume)
-        node.socket.sendText(JsonStream.serialize(request))
-        return node.eventBus
-                .filter { it["key"]?.toString() == key }
-                .doOnNext {
-                    any ->
-                    if (any["name"]?.toString() == "VOLUME_UPDATE") {
-                        LOGGER.debug("Successfully set the volume to {} for Guild ID: {}", volume, guildId)
-                        this.volume = volume
-                        return@doOnNext
-                    }
-                    LOGGER.warn("Failed to set volume for Guild ID: {}, JSON Content: {}", guildId, any.toString())
-                }
-                .next()
+
+        val future = wrapFuture(key) { data ->
+            if (data["name"]?.toString() == "VOLUME_UPDATE") {
+                LOGGER.debug("Successfully set the volume to {} for Guild ID: {}", volume, guildId)
+                this.volume = volume
+                return@wrapFuture
+            }
+            LOGGER.warn("Failed to set volume for Guild ID: {}, JSON Content: {}", guildId, data.toString())
+        }
+        sendData(JsonStream.serialize(request))
+        return future
     }
 
-    fun pause(): Mono<Any> = setPaused0(true)
-    fun resume(): Mono<Any> = setPaused0(false)
-    private fun setPaused0(paused: Boolean): Mono<Any> {
+    fun pause(): CompletionStage<Any> = setPaused0(true)
+    fun resume(): CompletionStage<Any> = setPaused0(false)
+    private fun setPaused0(paused: Boolean): CompletionStage<Any> {
         if (node == null) {
             LOGGER.error("Node is null when attempting to pause/resume audio for Guild ID: {}", guildId)
             throw IllegalStateException("Guild ID: $guildId | Null AudioNode!")
@@ -345,22 +359,38 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.warn("Player for Guild ID: {} uninitialized", guildId)
             throw IllegalStateException("Guild ID: $guildId | Not initialized!")
         }
-        val node = node!!
         val key = "setPaused${System.nanoTime()}$paused"
         val request = SetPausedRequest(key, guildId.toString(), paused)
-        node.socket.sendText(JsonStream.serialize(request))
-        return node.eventBus
-                .filter { it["key"]?.toString() == key }
-                .doOnNext {
-                    any ->
-                    if (any["name"]?.toString() == "PLAYER_PAUSED") {
-                        LOGGER.debug("Successfully paused/resumed audio for Guild ID: {}", guildId)
-                        this.paused = any["data"]?.toBoolean() ?: this.paused
-                        return@doOnNext
-                    }
-                    LOGGER.warn("Failed to pause/resume audio for Guild ID: {}, JSON Content: {}", guildId, any.toString())
+        val future = wrapFuture(key) { data ->
+            if (data["name"]?.toString() == "PLAYER_PAUSED") {
+                LOGGER.debug("Successfully paused/resumed audio for Guild ID: {}", guildId)
+                val pause = data["data"]?.toBoolean()
+                if (pause != null) {
+                    this.paused = pause
+                    return@wrapFuture
                 }
-                .next()
+            }
+            LOGGER.warn("Failed to pause/resume audio for Guild ID: {}, JSON Content: {}", guildId, data.toString())
+        }
+        sendData(JsonStream.serialize(request))
+        return future
+    }
+
+    private fun wrapFuture(address: String, handler: (Any) -> Unit): CompletionStage<Any> {
+        val consumer = client.eventBus.consumer<String>(address)
+        val future = Future.future<Any>()
+        consumer.handler { msg ->
+            val body = JsonIterator.deserialize(msg.body())
+            handler(body)
+            consumer.unregister()
+            future.complete(body)
+        }
+        return VertxCompletableFuture.from(client.vertx, future)
+    }
+
+    private fun sendData(data: String) {
+        val node = node!!
+        client.eventBus.publish("${node.address}:ws-outgoing", data)
     }
 
     companion object {

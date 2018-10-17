@@ -21,44 +21,49 @@ import com.jsoniter.JsonIterator
 import com.jsoniter.output.EncodingMode
 import com.jsoniter.output.JsonStream
 import com.jsoniter.spi.DecodingMode
-import it.unimi.dsi.fastutil.longs.Long2ObjectMap
-import it.unimi.dsi.fastutil.longs.Long2ObjectMaps
-import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap
-import it.unimi.dsi.fastutil.objects.*
+import gnu.trove.TCollections
+import gnu.trove.map.TLongObjectMap
+import gnu.trove.map.hash.TLongObjectHashMap
+import io.vertx.core.Vertx
+import io.vertx.core.VertxOptions
 import org.slf4j.LoggerFactory
+import java.util.*
 import java.util.concurrent.TimeUnit
 
-typealias AudioNodeMap = Object2ObjectOpenHashMap<String, AudioNode>
-typealias AudioNodeList = ObjectArrayList<AudioNode>
+typealias AudioNodeMap = HashMap<String, AudioNode>
+typealias AudioNodeList = ArrayList<AudioNode>
 
-typealias PlayerMap = Long2ObjectMap<BasaltPlayer>
-typealias PlayerHashMap = Long2ObjectOpenHashMap<BasaltPlayer>
-typealias PlayerList = ObjectArrayList<BasaltPlayer>
+typealias PlayerMap = TLongObjectMap<BasaltPlayer>
+typealias PlayerHashMap = TLongObjectHashMap<BasaltPlayer>
+typealias PlayerList = ArrayList<BasaltPlayer>
 
 @Suppress("UNUSED")
 class BasaltClient internal constructor(val defaultWsPort: Int, val defaultBaseInterval: Long, val defaultMaxInterval: Long,
                                         val defaultIntervalTimeUnit: TimeUnit, val defaultIntervalExpander: ((AudioNode, Long) -> Long),
-                                        val defaultNodePassword: String, val userId: Long) {
+                                        val defaultNodePassword: String, val userId: Long, val vertxOptions: VertxOptions) {
     private val _nodes = AudioNodeMap()
     val audioNodes: Map<String, AudioNode>
-        get() = Object2ObjectMaps.unmodifiable(_nodes)
+        get() = Collections.unmodifiableMap(_nodes)
 
     val audioNodeList: List<AudioNode>
         get() {
             val list = AudioNodeList(_nodes.size)
             list.addAll(_nodes.values)
-            return ObjectLists.unmodifiable(list)
+            return Collections.unmodifiableList(list)
         }
+
+    internal val vertx = Vertx.vertx(vertxOptions)
+    internal val eventBus = vertx.eventBus()
 
     internal val internalPlayers = PlayerHashMap()
     val players: PlayerMap
-        get() = Long2ObjectMaps.unmodifiable(internalPlayers)
+        get() = TCollections.unmodifiableMap(internalPlayers)
 
     val playerList: List<BasaltPlayer>
         get() {
-            val list = PlayerList(internalPlayers.size)
-            list.addAll(internalPlayers.values)
-            return ObjectLists.unmodifiable(list)
+            val list = PlayerList(internalPlayers.size())
+            list.addAll(internalPlayers.valueCollection())
+            return Collections.unmodifiableList(list)
         }
 
     val bestNode: AudioNode?
@@ -77,8 +82,17 @@ class BasaltClient internal constructor(val defaultWsPort: Int, val defaultBaseI
 
     val trackUtil = AudioTrackUtil()
 
-    fun addAudioNodes(vararg nodes: AudioNode) = nodes.forEach { _nodes[it.address] = it }
-    fun removeAudioNodes(vararg nodes: AudioNode) = nodes.forEach { _nodes.remove(it.address) }
+    fun addAudioNodes(vararg nodes: AudioNode) = nodes.forEach {
+        node ->
+        vertx.deployVerticle(node) {
+            _nodes[node.address] = node
+        }
+    }
+    fun removeAudioNodes(vararg nodes: AudioNode) = nodes.forEach {
+        node ->
+        node.stop()
+        _nodes.remove(node.address)
+    }
 
     fun getPlayerById(guildId: Long): BasaltPlayer? = internalPlayers[guildId]
     fun newPlayer(guildId: Long, node: AudioNode? = bestNode): BasaltPlayer {
@@ -88,7 +102,7 @@ class BasaltClient internal constructor(val defaultWsPort: Int, val defaultBaseI
         }
         val player = BasaltPlayer(this, guildId)
         player.node = node
-        internalPlayers[guildId] = player
+        internalPlayers.put(guildId, player)
         return player
     }
 

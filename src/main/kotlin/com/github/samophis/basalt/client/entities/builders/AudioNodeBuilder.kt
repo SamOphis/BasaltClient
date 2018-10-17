@@ -19,12 +19,10 @@ package com.github.samophis.basalt.client.entities.builders
 import com.github.samophis.basalt.client.entities.AudioNode
 import com.github.samophis.basalt.client.entities.BasaltClient
 import com.jsoniter.any.Any
-import com.neovisionaries.ws.client.WebSocket
-import com.neovisionaries.ws.client.WebSocketFactory
-import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap
+import io.vertx.core.http.WebSocket
 
 typealias SocketHandler = ((WebSocket, Any) -> Unit)
-typealias SocketHandlerMap = Object2ObjectOpenHashMap<String, SocketHandler>
+typealias SocketHandlerMap = HashMap<String, SocketHandler>
 
 class AudioNodeBuilder(): PlaceholderValues() {
     constructor(values: PlaceholderValues): this() {
@@ -43,14 +41,11 @@ class AudioNodeBuilder(): PlaceholderValues() {
             innerAddress = value
         }
 
-    var factory: WebSocketFactory = WebSocketFactory()
-    var initializer: ((WebSocket) -> WebSocket) = { it }
-
     private val handlers = SocketHandlerMap()
 
     fun putHandler(name: String, handler: SocketHandler) = handlers.put(name, handler)
 
     fun build(client: BasaltClient): AudioNode = AudioNode(client, wsPort, baseInterval, maxInterval, intervalExpander,
-            intervalTimeUnit, factory, initializer, nodePassword, address, handlers)
+            nodePassword, address, handlers)
 
 }

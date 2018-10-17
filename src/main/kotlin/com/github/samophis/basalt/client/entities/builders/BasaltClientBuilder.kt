@@ -17,6 +17,7 @@
 package com.github.samophis.basalt.client.entities.builders
 
 import com.github.samophis.basalt.client.entities.BasaltClient
+import io.vertx.core.VertxOptions
 import org.slf4j.LoggerFactory
 import javax.annotation.Nonnegative
 
@@ -33,7 +34,9 @@ class BasaltClientBuilder: PlaceholderValues() {
             field = value
         }
 
-    fun build(): BasaltClient = BasaltClient(wsPort, baseInterval, maxInterval, intervalTimeUnit, intervalExpander, nodePassword, userId)
+    var vertxOptions: VertxOptions = VertxOptions()
+
+    fun build(): BasaltClient = BasaltClient(wsPort, baseInterval, maxInterval, intervalTimeUnit, intervalExpander, nodePassword, userId, vertxOptions)
 
     companion object {
         private val LOGGER = LoggerFactory.getLogger(BasaltClientBuilder::class.java)

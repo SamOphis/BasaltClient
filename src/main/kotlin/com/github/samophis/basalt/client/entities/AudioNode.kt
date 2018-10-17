@@ -21,44 +21,37 @@ import com.github.samophis.basalt.client.entities.events.*
 import com.github.samophis.basalt.client.entities.messages.server.PlayerUpdate
 import com.github.samophis.basalt.client.entities.messages.server.stats.StatsUpdate
 import com.jsoniter.JsonIterator
-import com.jsoniter.any.Any
-import com.jsoniter.spi.JsonException
-import com.neovisionaries.ws.client.*
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
-
+import io.vertx.core.AbstractVerticle
+import io.vertx.core.Future
+import io.vertx.core.MultiMap
+import io.vertx.core.eventbus.MessageConsumer
+import io.vertx.core.http.HttpClient
+import io.vertx.core.http.WebSocket
+import io.vertx.core.http.WebSocketFrame
+import io.vertx.core.http.WebsocketVersion
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-import reactor.core.publisher.Flux
-import java.io.IOException
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 @Suppress("UNUSED")
 class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, val baseInterval: Long,
                                      val maxInterval: Long, val intervalExpander: ((AudioNode, Long) -> Long),
-                                     val intervalTimeUnit: TimeUnit, val factory: WebSocketFactory,
-                                     val initializer: ((WebSocket) -> WebSocket), val password: String, val address: String,
-                                     handlers: SocketHandlerMap): WebSocketAdapter() {
+                                     val password: String, val address: String, handlers: SocketHandlerMap): AbstractVerticle() {
 
     private val handlers: SocketHandlerMap = SocketHandlerMap()
-    val socket: WebSocket
     var statistics: Statistics? = null
         private set
-    init {
-        try {
-            socket = initializer(factory
-                    .createSocket(address)
-                    .addListener(this)
-                    .addHeader("Authorization", password)
-                    .addHeader("User-Id", client.userId.toString())
-                    .connectAsynchronously())
-        } catch (exc: IOException) {
-            LOGGER.error("Error when creating a WebSocket instance!", exc)
-            throw exc // no way to recover from this.
-        }
 
-        handlers["statsUpdate"] = {
-            _, data ->
+    private val closedByClient = AtomicBoolean(false)
+    private val messageConsumers = AtomicReference<List<MessageConsumer<*>>>(null)
+    private var httpClient: HttpClient? = null
+    internal val isOpen = AtomicBoolean(false)
+
+    init {
+        handlers["statsUpdate"] = { _, data ->
             val stats = JsonIterator.deserialize(data.toString(), StatsUpdate::class.java)
             if (statistics == null)
                 statistics = Statistics()
@@ -76,152 +69,131 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
             }
         }
 
-        handlers["playerUpdate"] = {
-            _, data ->
+        handlers["playerUpdate"] = { _, data ->
             val update = JsonIterator.deserialize(data.toString(), PlayerUpdate::class.java)
             val player = client.getPlayerById(update.guildId.toLong())
             if (player != null) {
                 LOGGER.debug("Player Update for Guild ID: {}, Position: {}, Timestamp: {}", update.guildId, update.position, update.timestamp)
                 player.position = update.position
                 player.timestamp = update.timestamp
-            }
-            else {
+            } else {
                 LOGGER.warn("Player Update for non-existent player (Guild ID: {})", update.guildId)
             }
         }
         handlers.entries.forEach { this.handlers[it.key] = it.value }
     }
 
-    val eventBus: Flux<Any> = Flux.create<Any> {
-        sink ->
-        socket.addListener(object: WebSocketAdapter() {
-            override fun onTextMessage(websocket: WebSocket, text: String) {
-                try {
-                    val data = JsonIterator.deserialize(text)
-                    val op = data["op"]!!.toString()
-                    if (op == "dispatch") {
-                        when (data["name"]?.toString()) {
-                            null -> {}
-                            "ERROR" -> {
-                                sink.error(RuntimeException(data["data"]?.toString() ?: "No message."))
-                                return
-                            }
-                            "TRACK_STARTED" -> {
-                                val player = client.getPlayerById(data["guildId"]!!.toLong())!!
-                                player.fireEvent(TrackStartEvent(player, player.guildId,
-                                        client.trackUtil.decodeTrack(data["data"]!!["data"]!!.toString())))
-                            }
-                            "TRACK_ENDED" -> {
-                                val raw = data["data"]!!
-                                val player = client.getPlayerById(data["guildId"]!!.toLong())!!
-                                player.fireEvent(TrackEndEvent(player, player.guildId,
-                                        client.trackUtil.decodeTrack(raw["track"]!!.toString()),
-                                        AudioTrackEndReason.valueOf(raw["reason"]!!["name"]!!.toString())))
-                            }
-                            "TRACK_EXCEPTION" -> {
-                                val raw = data["data"]!!
-                                val player = client.getPlayerById(data["guildId"]!!.toLong())!!
-                                player.fireEvent(TrackExceptionEvent(player, player.guildId,
-                                        client.trackUtil.decodeTrack(raw["track"]!!.toString()),
-                                        raw["exception"]!!["message"]!!.toString(),
-                                        FriendlyException.Severity.valueOf(raw["exception"]["severity"]!!.toString())))
-                            }
-                            "TRACK_STUCK" -> {
-                                val player = client.getPlayerById(data["guildId"]!!.toLong())!!
-                                player.fireEvent(TrackStuckEvent(player, player.guildId,
-                                        client.trackUtil.decodeTrack(data["data"]!!["track"]!!.toString()),
-                                        data["data"]["thresholdMs"]!!.toLong()))
-                            }
-                            "PLAYER_PAUSED" -> {
-                                val player = client.getPlayerById(data["guildId"]!!.toLong())!!
-                                val event = if (data["data"]!!.toBoolean()) {
-                                    PlayerPauseEvent(player, player.guildId)
-                                }
-                                else {
-                                    PlayerResumeEvent(player, player.guildId)
-                                }
-                                player.fireEvent(event)
-                            }
-                        }
-                        sink.next(data)
+    override fun start(startFuture: Future<Void>) {
+        httpClient = vertx.createHttpClient()
+        val cl = httpClient!!
+        val map = MultiMap.caseInsensitiveMultiMap()
+                .add("Authorization", password)
+                .add("User-Id", client.userId.toString())
+        cl.websocketAbs(address, map, WebsocketVersion.V13, null, { socket ->
+            isOpen.set(true)
+            val consumers = ArrayList<MessageConsumer<*>>()
+            consumers.add(vertx.eventBus().consumer<String>("$address:ws-outgoing") {
+                socket.writeTextMessage(it.body())
+            })
+            messageConsumers.set(consumers)
+            socket.frameHandler { handleSocketFrame(socket, it) }
+            socket.exceptionHandler(this::handleException)
+            LOGGER.info("Connected to AudioNode: {} on Port: {}", address, wsPort)
+            client.internalPlayers.valueCollection().forEach { player ->
+                if (player.node != this)
+                    player.node = this
+                player.connect()
+            }
+        }) { err ->
+            LOGGER.error("Error when creating a WebSocket instance! AudioNode: $address, Port: $wsPort", err)
+            throw err // no way to recover from this
+        }
+        startFuture.complete()
+    }
+
+    override fun stop() {
+        messageConsumers.get().forEach { it.unregister() }
+        httpClient?.close()
+
+    }
+
+    private fun handleMessage(webSocket: WebSocket, msg: String) {
+        val data = JsonIterator.deserialize(msg)
+        val op = data["op"]?.toString() ?: throw UnsupportedOperationException("Missing opcode from JSON Data!")
+        if (op == "dispatch") {
+            vertx.eventBus().publish(data["key"]!!.toString(), data.toString())
+            when (data["name"]?.toString()) {
+                null -> throw UnsupportedOperationException("Missing name from JSON Data!")
+                "ERROR" -> throw RuntimeException(data["data"]?.toString() ?: "No message.")
+                "TRACK_STARTED" -> {
+                    val player = client.getPlayerById(data["guildId"]!!.toLong())!!
+                    player.fireEvent(TrackStartEvent(player, player.guildId,
+                            client.trackUtil.decodeTrack(data["data"]!!["data"]!!.toString())))
+                }
+                "TRACK_ENDED" -> {
+                    val raw = data["data"]!!
+                    val player = client.getPlayerById(data["guildId"]!!.toLong())!!
+                    player.fireEvent(TrackEndEvent(player, player.guildId,
+                            client.trackUtil.decodeTrack(raw["track"]!!.toString()),
+                            AudioTrackEndReason.valueOf(raw["reason"]!!["type"]!!.toString())))
+                }
+                "TRACK_EXCEPTION" -> {
+                    val raw = data["data"]!!
+                    val player = client.getPlayerById(data["guildId"]!!.toLong())!!
+                    player.fireEvent(TrackExceptionEvent(player, player.guildId,
+                            client.trackUtil.decodeTrack(raw["track"]!!.toString()),
+                            raw["exception"]!!["message"]!!.toString(),
+                            FriendlyException.Severity.valueOf(raw["exception"]["severity"]!!.toString())))
+                }
+                "TRACK_STUCK" -> {
+                    val player = client.getPlayerById(data["guildId"]!!.toLong())!!
+                    player.fireEvent(TrackStuckEvent(player, player.guildId,
+                            client.trackUtil.decodeTrack(data["data"]!!["track"]!!.toString()),
+                            data["data"]["thresholdMs"]!!.toLong()))
+                }
+                "PLAYER_PAUSED" -> {
+                    val player = client.getPlayerById(data["guildId"]!!.toLong())!!
+                    val event = if (data["data"]!!.toBoolean()) {
+                        PlayerPauseEvent(player, player.guildId)
                     }
                     else {
-                        val handler = handlers[op]
-                        handler?.let {
-                            try {
-                                it(websocket, data)
-                            } catch (err: Throwable) {
-                                LOGGER.error("Error when invoking the SocketHandler for OP: {} and Content: {}", op, text)
-                            }
-                            return
-                        }
-                        LOGGER.warn("Unhandled Response from the Basalt Server! OP: {}, Content: {}", op, text)
+                        PlayerResumeEvent(player, player.guildId)
                     }
-                } catch (err: Throwable) {
-                    sink.error(err)
+                    player.fireEvent(event)
                 }
             }
-        })
-    }.doOnError {
-        exc ->
-        when (exc) {
-            is JsonException -> LOGGER.error("Error when deserializing a Basalt Server JSON Response!", exc)
-            is KotlinNullPointerException -> LOGGER.error("Missing Opcode Key from Basalt Server JSON Response!", exc)
-            else -> LOGGER.error("{} | Error when handling a Basalt Server JSON Response! Message: {}",
-                    exc.javaClass.simpleName, exc.message)
+        } else {
+            val handler = handlers[op]
+            handler?.apply { invoke(webSocket, data); return }
+            LOGGER.warn("Unhandled Response from Audio Node: {}, OP: {}, Content: {}", address, op, msg)
         }
     }
 
-    override fun onConnected(websocket: WebSocket, headers: MutableMap<String, MutableList<String>>) {
-        LOGGER.info("Connected to AudioNode: {} on Port: {}", websocket.uri.host, websocket.uri.port)
-        client.internalPlayers.values.forEach {
-            player ->
-            if (player.node != this) {
-                player.node = this
-                try {
-                    val data = player.connect().block() ?: throw RuntimeException("No event returned upon re-connecting.")
-                    if (data["name"]?.toString() == "ERROR")
-                        throw RuntimeException(data["data"]?.toString() ?: "No message.")
-                } catch (exc: Throwable) {
-                    when (exc) {
-                        is IllegalArgumentException, is RuntimeException ->
-                            LOGGER.warn("Failed to seamlessly reconnect to AudioNode: {}, Message: {}", websocket.uri.host, exc.message)
-                        else -> {}
-                    }
-                }
-            }
+    private fun handleClose(closeCode: Int, closeReason: String?) {
+        isOpen.set(false)
+        if (closedByClient.get()) {
+            LOGGER.info("Connection to AudioNode: {} closed by client for {}!", address, closeReason ?: "no specified reason")
+        } else if (closeCode == 1000 || closeCode == 1001) {
+            LOGGER.info("AudioNode: {} safely/gracefully closed the connection for {}!", address, closeReason ?: "no specified reason")
+        } else {
+            // todo add reconnect attempts
         }
-    }
-
-    override fun onDisconnected(websocket: WebSocket, serverCloseFrame: WebSocketFrame, clientCloseFrame: WebSocketFrame, closedByServer: Boolean) {
-        val closer = if (closedByServer) "server" else "client"
-        LOGGER.info("Disconnected from AudioNode: {} by {}!", websocket.uri.host, closer)
-        client.internalPlayers.values.forEach {
+        closedByClient.set(false)
+        client.internalPlayers.valueCollection().forEach {
             player ->
-            if (player.node == this) {
+            if (player.node == this)
                 player.node = client.bestNode
-                try {
-                    val data = player.connect().block() ?: throw RuntimeException("No event returned upon re-connecting.")
-                    if (data["name"]?.toString() == "ERROR")
-                        throw RuntimeException(data["data"]?.toString() ?: "No message.")
-                } catch (exc: Throwable) {
-                    when (exc) {
-                        is IllegalArgumentException, is RuntimeException ->
-                            LOGGER.warn("Failed to seamlessly reconnect to AudioNode: {}, Message: {}", websocket.uri.host, exc.message)
-                        else -> {}
-                    }
-                }
-            }
+            player.connect()
         }
     }
 
-    override fun onError(socket: WebSocket, error: WebSocketException) {
-        LOGGER.error("Error thrown in the WebSocket Handler for AudioNode: {} | Error Message: {}", socket.uri.host, error.message ?: "No message.")
-    }
+    private fun handleSocketFrame(webSocket: WebSocket, webSocketFrame: WebSocketFrame) = when {
+            webSocketFrame.isText -> handleMessage(webSocket, webSocketFrame.textData())
+            webSocketFrame.isClose -> handleClose(webSocketFrame.closeStatusCode().toInt(), webSocketFrame.closeReason())
+            else -> {}
+        }
 
-    override fun onConnectError(websocket: WebSocket, exception: WebSocketException) {
-        LOGGER.error("Error when connecting to the AudioNode at {}, Error Message: {}", websocket.uri.host, exception.message)
-    }
+    private fun handleException(err: Throwable) = LOGGER.error("Error during WebSocket communication!", err)
 
     companion object {
         private val LOGGER: Logger = LoggerFactory.getLogger(AudioNode::class.java)
