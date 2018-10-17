@@ -26,6 +26,7 @@ import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
 import io.vertx.core.AbstractVerticle
 import io.vertx.core.Future
 import io.vertx.core.MultiMap
+import io.vertx.core.eventbus.MessageConsumer
 import io.vertx.core.http.HttpClient
 import io.vertx.core.http.WebSocket
 import io.vertx.core.http.WebSocketFrame
@@ -33,6 +34,7 @@ import io.vertx.core.http.WebsocketVersion
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 @Suppress("UNUSED")
 class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, val baseInterval: Long,
@@ -44,6 +46,7 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
         private set
 
     private val closedByClient = AtomicBoolean(false)
+    private val messageConsumers = AtomicReference<List<MessageConsumer<*>>>(null)
     private var httpClient: HttpClient? = null
     internal val isOpen = AtomicBoolean(false)
 
@@ -86,14 +89,20 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
         val map = MultiMap.caseInsensitiveMultiMap()
                 .add("Authorization", password)
                 .add("User-Id", client.userId.toString())
-        cl.websocketAbs("$address:$wsPort", map, WebsocketVersion.V13, null, { socket ->
+        cl.websocketAbs(address, map, WebsocketVersion.V13, null, { socket ->
             isOpen.set(true)
+            val consumers = ArrayList<MessageConsumer<*>>()
+            consumers.add(vertx.eventBus().consumer<String>("$address:ws-outgoing") {
+                socket.writeTextMessage(it.body())
+            })
+            messageConsumers.set(consumers)
             socket.frameHandler { handleSocketFrame(socket, it) }
             socket.exceptionHandler(this::handleException)
             LOGGER.info("Connected to AudioNode: {} on Port: {}", address, wsPort)
             client.internalPlayers.valueCollection().forEach { player ->
                 if (player.node != this)
                     player.node = this
+                player.connect()
             }
         }) { err ->
             LOGGER.error("Error when creating a WebSocket instance! AudioNode: $address, Port: $wsPort", err)
@@ -103,13 +112,16 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
     }
 
     override fun stop() {
+        messageConsumers.get().forEach { it.unregister() }
         httpClient?.close()
+
     }
 
     private fun handleMessage(webSocket: WebSocket, msg: String) {
         val data = JsonIterator.deserialize(msg)
         val op = data["op"]?.toString() ?: throw UnsupportedOperationException("Missing opcode from JSON Data!")
         if (op == "dispatch") {
+            vertx.eventBus().publish(data["key"]!!.toString(), data.toString())
             when (data["name"]?.toString()) {
                 null -> throw UnsupportedOperationException("Missing name from JSON Data!")
                 "ERROR" -> throw RuntimeException(data["data"]?.toString() ?: "No message.")
@@ -171,6 +183,7 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
             player ->
             if (player.node == this)
                 player.node = client.bestNode
+            player.connect()
         }
     }
 

@@ -121,7 +121,7 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
         val key = "initialize${System.nanoTime()}"
         val request = InitializeRequest(key, guildId.toString(), sessionId, token, endpoint)
         val text = JsonStream.serialize(request)
-        val future = wrapFuture("$guildId:$key") { data ->
+        val future = wrapFuture(key) { data ->
             if (data["name"]?.toString() == "INITIALIZED") {
                 LOGGER.debug("Initialized player for Guild ID: {}", guildId)
                 state = State.INITIALIZED
@@ -183,9 +183,9 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
 
         val future = Future.future<List<AudioLoadResult>>()
         val list = ArrayList<AudioLoadResult>()
-        val consumer = client.eventBus.consumer<Any>(key)
+        val consumer = client.eventBus.consumer<String>(key)
         consumer.handler { msg ->
-            val body = msg.body()
+            val body = JsonIterator.deserialize(msg.body())
             when (body["name"]?.toString()) {
                 null -> throw UnsupportedOperationException("Missing name from JSON Response!")
                 "LOAD_IDENTIFIERS_CHUNK" -> {
@@ -225,7 +225,7 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
                             throw RuntimeException(any["data"]?.toString() ?: "No message.")
                         val key = "playTracks${System.nanoTime()}"
                         val request = PlayRequest(key, guildId.toString(), track, startTime)
-                        val future = wrapFuture("$guildId:$key") { data ->
+                        val future = wrapFuture(key) { data ->
                             if (data["name"]?.toString() == "TRACK_STARTED") {
                                 LOGGER.debug("Started track for Guild ID: {}", guildId)
                                 return@wrapFuture
@@ -238,7 +238,7 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
         }
         val key = "playTracks${System.nanoTime()}"
         val request = PlayRequest(key, guildId.toString(), track, startTime)
-        val future = wrapFuture("$guildId:$key") { data ->
+        val future = wrapFuture(key) { data ->
             if (data["name"]?.toString() == "TRACK_STARTED") {
                 LOGGER.debug("Started track for Guild ID: {}", guildId)
                 return@wrapFuture
@@ -260,7 +260,7 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
         }
         val key = "stopTrack${System.nanoTime()}"
         val request = EmptyRequest(key, "stop", guildId.toString())
-        val future = wrapFuture("$guildId:$key") { data ->
+        val future = wrapFuture(key) { data ->
             if (data["name"]?.toString() == "TRACK_ENDED") {
                 LOGGER.debug("Successfully stopped audio playback for Guild ID: {}", guildId)
                 return@wrapFuture
@@ -289,7 +289,7 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
         }
         val key = "destroy${System.nanoTime()}"
         val request = EmptyRequest(key, "destroy", guildId.toString())
-        val future = wrapFuture("$guildId:$key") { data ->
+        val future = wrapFuture(key) { data ->
             if (data["name"]?.toString() == "DESTROYED") {
                 LOGGER.debug("Destroyed player for Guild ID: {}", guildId)
                 state = State.CONNECTED
@@ -312,7 +312,7 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
         }
         val key = "seek${System.nanoTime()}"
         val request = SeekRequest(key, guildId.toString(), position)
-        val future = wrapFuture("$guildId:$key") { data ->
+        val future = wrapFuture(key) { data ->
             if (data["name"]?.toString() == "POSITION_UPDATE") {
                 LOGGER.debug("Successfully seeked to Position: {}ms for Guild ID: {}", position, guildId)
                 this.position = position
@@ -336,7 +336,7 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
         val key = "volume${System.nanoTime()}$volume"
         val request = SetVolumeRequest(key, guildId.toString(), volume)
 
-        val future = wrapFuture("$guildId:$key") { data ->
+        val future = wrapFuture(key) { data ->
             if (data["name"]?.toString() == "VOLUME_UPDATE") {
                 LOGGER.debug("Successfully set the volume to {} for Guild ID: {}", volume, guildId)
                 this.volume = volume
@@ -361,7 +361,7 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
         }
         val key = "setPaused${System.nanoTime()}$paused"
         val request = SetPausedRequest(key, guildId.toString(), paused)
-        val future = wrapFuture("$guildId:$key") { data ->
+        val future = wrapFuture(key) { data ->
             if (data["name"]?.toString() == "PLAYER_PAUSED") {
                 LOGGER.debug("Successfully paused/resumed audio for Guild ID: {}", guildId)
                 val pause = data["data"]?.toBoolean()
@@ -377,10 +377,10 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
     }
 
     private fun wrapFuture(address: String, handler: (Any) -> Unit): CompletionStage<Any> {
-        val consumer = client.eventBus.consumer<Any>(address)
+        val consumer = client.eventBus.consumer<String>(address)
         val future = Future.future<Any>()
         consumer.handler { msg ->
-            val body = msg.body()
+            val body = JsonIterator.deserialize(msg.body())
             handler(body)
             consumer.unregister()
             future.complete(body)
