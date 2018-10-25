@@ -16,7 +16,7 @@
 
 buildscript {
     ext {
-        kotlin_version = '1.2.71'
+        kotlin_version = '1.3.0-rc-190'
         dokka_version = '0.9.17'
         shadow_version = '2.0.4'
         versions_version = '0.20.0'
@@ -45,7 +45,7 @@ apply plugin: 'maven-publish'
 apply plugin: 'com.jfrog.bintray'
 
 group 'com.github.samophis'
-version '0.9.1'
+version '0.10.0'
 description = 'A fast, reactive client implementation for Basalt and JDA.'
 sourceCompatibility = 10
 targetCompatibility = 10
@@ -120,7 +120,7 @@ task updateDocs(type: Copy, dependsOn: javadocJar) {
 }
 
 task wrapper(type: Wrapper) {
-    gradleVersion = '4.10'
+    gradleVersion = '4.10.2'
 }
 
 build {
@@ -152,10 +152,10 @@ artifacts {
 
 ext {
     slf4j_version = '1.7.25'
-    lavaplayer_version = '1.3.7'
+    lavaplayer_version = '1.3.10'
     jsoniter_version = '0.9.23'
     javassist_version = '3.23.1-GA'
-    jda_version = '3.8.1_438'
+    jda_version = '3.8.1_439'
     vertx_version = '3.5.4'
     vertx_futures_version = '0.1.2'
 }
