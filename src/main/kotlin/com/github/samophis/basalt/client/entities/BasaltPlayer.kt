@@ -34,7 +34,7 @@ import kotlin.collections.ArrayList
 import kotlin.math.min
 
 @Suppress("UNUSED")
-class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: Long) {
+class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: String) {
     @Volatile var sessionId: String? = null
         private set
     @Volatile var token: String? = null
@@ -118,16 +118,15 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
         this.sessionId = sessionId
         this.token = token
         this.endpoint = endpoint
-        val key = "initialize${System.nanoTime()}"
-        val request = InitializeRequest(key, guildId.toString(), sessionId, token, endpoint)
+        val request = InitializeRequest(guildId, sessionId, token, endpoint)
         val text = JsonStream.serialize(request)
-        val future = wrapFuture(key) { data ->
+        val future = wrapFuture(guildId) { data ->
             if (data["name"]?.toString() == "INITIALIZED") {
                 LOGGER.debug("Initialized player for Guild ID: {}", guildId)
                 state = State.INITIALIZED
-            } else {
-                LOGGER.warn("Failed to initialize player for Guild ID: {}", guildId)
+                return@wrapFuture true
             }
+            return@wrapFuture false
         }
         sendData(text)
         return future
@@ -177,7 +176,7 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
                 VertxCompletableFuture.from(client.vertx, future)
             }
         }
-        val key = "loadIdentifiers${System.nanoTime()}"
+        val key = "loadIdentifiers${System.nanoTime()}" // needs a key
         val request = LoadIdentifiersRequest(key, *identifiers)
         val text = JsonStream.serialize(request)
 
@@ -223,27 +222,25 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
                         any ->
                         if (any["name"]?.toString() == "ERROR")
                             throw RuntimeException(any["data"]?.toString() ?: "No message.")
-                        val key = "playTracks${System.nanoTime()}"
-                        val request = PlayRequest(key, guildId.toString(), track, startTime)
-                        val future = wrapFuture(key) { data ->
+                        val request = PlayRequest(guildId, track, startTime)
+                        val future = wrapFuture(guildId) { data ->
                             if (data["name"]?.toString() == "TRACK_STARTED") {
                                 LOGGER.debug("Started track for Guild ID: {}", guildId)
-                                return@wrapFuture
+                                return@wrapFuture true
                             }
-                            LOGGER.warn("Failed to start track for Guild ID: {}, JSON Content: {}", data.toString())
+                            return@wrapFuture false
                         }
                         sendData(JsonStream.serialize(request))
                         future
                     }
         }
-        val key = "playTracks${System.nanoTime()}"
-        val request = PlayRequest(key, guildId.toString(), track, startTime)
-        val future = wrapFuture(key) { data ->
+        val request = PlayRequest(guildId, track, startTime)
+        val future = wrapFuture(guildId) { data ->
             if (data["name"]?.toString() == "TRACK_STARTED") {
                 LOGGER.debug("Started track for Guild ID: {}", guildId)
-                return@wrapFuture
+                return@wrapFuture true
             }
-            LOGGER.warn("Failed to start track for Guild ID: {}, JSON Content: {}", data.toString())
+            return@wrapFuture false
         }
         sendData(JsonStream.serialize(request))
         return future
@@ -258,14 +255,13 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.warn("Player for Guild ID: {} uninitialized!", guildId)
             throw IllegalStateException("Guild ID: $guildId | Not initialized!")
         }
-        val key = "stopTrack${System.nanoTime()}"
-        val request = EmptyRequest(key, "stop", guildId.toString())
-        val future = wrapFuture(key) { data ->
+        val request = EmptyRequest("stop", guildId)
+        val future = wrapFuture(guildId) { data ->
             if (data["name"]?.toString() == "TRACK_ENDED") {
                 LOGGER.debug("Successfully stopped audio playback for Guild ID: {}", guildId)
-                return@wrapFuture
+                return@wrapFuture true
             }
-            LOGGER.warn("Failed to stop audio playback for Guild ID: {}", guildId)
+            return@wrapFuture false
         }
         sendData(JsonStream.serialize(request))
         return future
@@ -287,15 +283,14 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             }
             else -> {}
         }
-        val key = "destroy${System.nanoTime()}"
-        val request = EmptyRequest(key, "destroy", guildId.toString())
-        val future = wrapFuture(key) { data ->
+        val request = EmptyRequest("destroy", guildId)
+        val future = wrapFuture(guildId) { data ->
             if (data["name"]?.toString() == "DESTROYED") {
                 LOGGER.debug("Destroyed player for Guild ID: {}", guildId)
                 state = State.CONNECTED
-                return@wrapFuture
+                return@wrapFuture true
             }
-            LOGGER.warn("Failed to destroy player for Guild ID: {}, JSON Content: {}", guildId, data.toString())
+            return@wrapFuture false
         }
         sendData(JsonStream.serialize(request))
         return future
@@ -310,15 +305,14 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.warn("Player for Guild ID: {} uninitialized!", guildId)
             throw IllegalStateException("Guild ID: $guildId | Not initialized!")
         }
-        val key = "seek${System.nanoTime()}"
-        val request = SeekRequest(key, guildId.toString(), position)
-        val future = wrapFuture(key) { data ->
+        val request = SeekRequest(guildId, position)
+        val future = wrapFuture(guildId) { data ->
             if (data["name"]?.toString() == "POSITION_UPDATE") {
                 LOGGER.debug("Successfully seeked to Position: {}ms for Guild ID: {}", position, guildId)
                 this.position = position
-                return@wrapFuture
+                return@wrapFuture true
             }
-            LOGGER.warn("Failed to seek for Guild ID: {}, JSON Content: {}", guildId, data.toString())
+            return@wrapFuture false
         }
         sendData(JsonStream.serialize(request))
         return future
@@ -333,16 +327,14 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.warn("Player for Guild ID: {} uninitialized!", guildId)
             throw IllegalStateException("Guild ID: $guildId | Not initialized!")
         }
-        val key = "volume${System.nanoTime()}$volume"
-        val request = SetVolumeRequest(key, guildId.toString(), volume)
-
-        val future = wrapFuture(key) { data ->
+        val request = VolumeRequest(guildId, volume)
+        val future = wrapFuture(guildId) { data ->
             if (data["name"]?.toString() == "VOLUME_UPDATE") {
                 LOGGER.debug("Successfully set the volume to {} for Guild ID: {}", volume, guildId)
                 this.volume = volume
-                return@wrapFuture
+                return@wrapFuture true
             }
-            LOGGER.warn("Failed to set volume for Guild ID: {}, JSON Content: {}", guildId, data.toString())
+            return@wrapFuture false
         }
         sendData(JsonStream.serialize(request))
         return future
@@ -359,31 +351,30 @@ class BasaltPlayer internal constructor(val client: BasaltClient, val guildId: L
             LOGGER.warn("Player for Guild ID: {} uninitialized", guildId)
             throw IllegalStateException("Guild ID: $guildId | Not initialized!")
         }
-        val key = "setPaused${System.nanoTime()}$paused"
-        val request = SetPausedRequest(key, guildId.toString(), paused)
-        val future = wrapFuture(key) { data ->
+        val request = if (paused) EmptyRequest("pause", guildId) else EmptyRequest("resume", guildId)
+        val future = wrapFuture(guildId) { data ->
             if (data["name"]?.toString() == "PLAYER_PAUSED") {
                 LOGGER.debug("Successfully paused/resumed audio for Guild ID: {}", guildId)
                 val pause = data["data"]?.toBoolean()
-                if (pause != null) {
+                if (pause != null)
                     this.paused = pause
-                    return@wrapFuture
-                }
+                return@wrapFuture true
             }
-            LOGGER.warn("Failed to pause/resume audio for Guild ID: {}, JSON Content: {}", guildId, data.toString())
+            return@wrapFuture false
         }
         sendData(JsonStream.serialize(request))
         return future
     }
 
-    private fun wrapFuture(address: String, handler: (Any) -> Unit): CompletionStage<Any> {
+    private fun wrapFuture(address: String, handler: (Any) -> Boolean): CompletionStage<Any> {
         val consumer = client.eventBus.consumer<String>(address)
         val future = Future.future<Any>()
         consumer.handler { msg ->
             val body = JsonIterator.deserialize(msg.body())
-            handler(body)
-            consumer.unregister()
-            future.complete(body)
+            if (handler(body)) {
+                consumer.unregister()
+                future.complete(body)
+            }
         }
         return VertxCompletableFuture.from(client.vertx, future)
     }

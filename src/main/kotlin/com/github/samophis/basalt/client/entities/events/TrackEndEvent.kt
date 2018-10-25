@@ -21,5 +21,5 @@ import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
 
 @Suppress("UNUSED")
-class TrackEndEvent internal constructor(override val player: BasaltPlayer, override val guildId: Long,
+class TrackEndEvent internal constructor(override val player: BasaltPlayer, override val guildId: String,
                                          val track: AudioTrack, val reason: AudioTrackEndReason): Event

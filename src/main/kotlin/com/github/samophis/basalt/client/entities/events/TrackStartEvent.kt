@@ -20,4 +20,4 @@ import com.github.samophis.basalt.client.entities.BasaltPlayer
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 
 @Suppress("UNUSED")
-class TrackStartEvent internal constructor(override val player: BasaltPlayer, override val guildId: Long, val track: AudioTrack): Event
+class TrackStartEvent internal constructor(override val player: BasaltPlayer, override val guildId: String, val track: AudioTrack): Event

@@ -21,9 +21,6 @@ import com.jsoniter.JsonIterator
 import com.jsoniter.output.EncodingMode
 import com.jsoniter.output.JsonStream
 import com.jsoniter.spi.DecodingMode
-import gnu.trove.TCollections
-import gnu.trove.map.TLongObjectMap
-import gnu.trove.map.hash.TLongObjectHashMap
 import io.vertx.core.Vertx
 import io.vertx.core.VertxOptions
 import org.slf4j.LoggerFactory
@@ -33,8 +30,8 @@ import java.util.concurrent.TimeUnit
 typealias AudioNodeMap = HashMap<String, AudioNode>
 typealias AudioNodeList = ArrayList<AudioNode>
 
-typealias PlayerMap = TLongObjectMap<BasaltPlayer>
-typealias PlayerHashMap = TLongObjectHashMap<BasaltPlayer>
+typealias PlayerMap = Map<String, BasaltPlayer>
+typealias PlayerHashMap = HashMap<String, BasaltPlayer>
 typealias PlayerList = ArrayList<BasaltPlayer>
 
 @Suppress("UNUSED")
@@ -57,12 +54,12 @@ class BasaltClient internal constructor(val defaultWsPort: Int, val defaultBaseI
 
     internal val internalPlayers = PlayerHashMap()
     val players: PlayerMap
-        get() = TCollections.unmodifiableMap(internalPlayers)
+        get() = Collections.unmodifiableMap(internalPlayers)
 
     val playerList: List<BasaltPlayer>
         get() {
-            val list = PlayerList(internalPlayers.size())
-            list.addAll(internalPlayers.valueCollection())
+            val list = PlayerList(internalPlayers.size)
+            list.addAll(internalPlayers.values)
             return Collections.unmodifiableList(list)
         }
 
@@ -94,15 +91,15 @@ class BasaltClient internal constructor(val defaultWsPort: Int, val defaultBaseI
         _nodes.remove(node.address)
     }
 
-    fun getPlayerById(guildId: Long): BasaltPlayer? = internalPlayers[guildId]
-    fun newPlayer(guildId: Long, node: AudioNode? = bestNode): BasaltPlayer {
+    fun getPlayerById(guildId: String): BasaltPlayer? = internalPlayers[guildId]
+    fun newPlayer(guildId: String, node: AudioNode? = bestNode): BasaltPlayer {
         if (internalPlayers.containsKey(guildId)) {
             LOGGER.warn("Cannot create duplicate players for Guild ID: {}", guildId)
-            throw IllegalArgumentException(guildId.toString())
+            throw IllegalArgumentException(guildId)
         }
         val player = BasaltPlayer(this, guildId)
         player.node = node
-        internalPlayers.put(guildId, player)
+        internalPlayers[guildId] = player
         return player
     }
 

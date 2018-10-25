@@ -20,5 +20,5 @@ import com.github.samophis.basalt.client.entities.BasaltPlayer
 
 interface Event {
     val player: BasaltPlayer
-    val guildId: Long
+    val guildId: String
 }

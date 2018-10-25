@@ -19,7 +19,6 @@ package com.github.samophis.basalt.client.jda
 import net.dv8tion.jda.core.entities.impl.JDAImpl
 import net.dv8tion.jda.core.handle.VoiceStateUpdateHandler
 import org.json.JSONObject
-import org.slf4j.LoggerFactory
 
 class VoiceStateInterceptor(jda: JDAImpl): VoiceStateUpdateHandler(jda) {
     override fun handleInternally(content: JSONObject): Long? {
@@ -37,8 +36,5 @@ class VoiceStateInterceptor(jda: JDAImpl): VoiceStateUpdateHandler(jda) {
         val channelId = if (!content.isNull("channel_id")) content.getLong("channel_id") else null
         jda.client.updateAudioConnection(id, guild.getVoiceChannelById(channelId ?: 0))
         return super.handleInternally(content)
-    }
-    companion object {
-        private val LOGGER = LoggerFactory.getLogger(VoiceStateInterceptor::class.java)
     }
 }

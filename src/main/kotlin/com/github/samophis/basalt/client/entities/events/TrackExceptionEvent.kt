@@ -21,6 +21,6 @@ import com.sedmelluq.discord.lavaplayer.tools.FriendlyException
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 
 @Suppress("UNUSED")
-class TrackExceptionEvent internal constructor(override val player: BasaltPlayer, override val guildId: Long,
+class TrackExceptionEvent internal constructor(override val player: BasaltPlayer, override val guildId: String,
                                                val track: AudioTrack, val message: String, val severity: FriendlyException.Severity): Event
 

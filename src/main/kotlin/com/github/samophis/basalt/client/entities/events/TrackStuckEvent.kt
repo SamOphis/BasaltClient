@@ -20,5 +20,5 @@ import com.github.samophis.basalt.client.entities.BasaltPlayer
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack
 
 @Suppress("UNUSED")
-class TrackStuckEvent internal constructor(override val player: BasaltPlayer, override val guildId: Long,
+class TrackStuckEvent internal constructor(override val player: BasaltPlayer, override val guildId: String,
                                            val track: AudioTrack, val thresholdMs: Long): Event
