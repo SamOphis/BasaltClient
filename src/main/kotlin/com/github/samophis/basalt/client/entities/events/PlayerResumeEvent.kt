@@ -19,4 +19,4 @@ package com.github.samophis.basalt.client.entities.events
 import com.github.samophis.basalt.client.entities.BasaltPlayer
 
 @Suppress("UNUSED")
-class PlayerResumeEvent internal constructor(override val player: BasaltPlayer, override val guildId: Long): Event
+class PlayerResumeEvent internal constructor(override val player: BasaltPlayer, override val guildId: String): Event

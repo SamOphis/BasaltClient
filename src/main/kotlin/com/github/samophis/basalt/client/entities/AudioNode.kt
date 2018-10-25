@@ -21,6 +21,8 @@ import com.github.samophis.basalt.client.entities.events.*
 import com.github.samophis.basalt.client.entities.messages.server.PlayerUpdate
 import com.github.samophis.basalt.client.entities.messages.server.stats.StatsUpdate
 import com.jsoniter.JsonIterator
+import com.jsoniter.ValueType
+import com.jsoniter.any.Any
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException
 import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason
 import io.vertx.core.AbstractVerticle
@@ -71,7 +73,7 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
 
         handlers["playerUpdate"] = { _, data ->
             val update = JsonIterator.deserialize(data.toString(), PlayerUpdate::class.java)
-            val player = client.getPlayerById(update.guildId.toLong())
+            val player = client.getPlayerById(update.guildId)
             if (player != null) {
                 LOGGER.debug("Player Update for Guild ID: {}, Position: {}, Timestamp: {}", update.guildId, update.position, update.timestamp)
                 player.position = update.position
@@ -99,7 +101,7 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
             socket.frameHandler { handleSocketFrame(socket, it) }
             socket.exceptionHandler(this::handleException)
             LOGGER.info("Connected to AudioNode: {} on Port: {}", address, wsPort)
-            client.internalPlayers.valueCollection().forEach { player ->
+            client.internalPlayers.values.forEach { player ->
                 if (player.node != this)
                     player.node = this
                 player.connect()
@@ -119,47 +121,55 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
 
     private fun handleMessage(webSocket: WebSocket, msg: String) {
         val data = JsonIterator.deserialize(msg)
-        val op = data["op"]?.toString() ?: throw UnsupportedOperationException("Missing opcode from JSON Data!")
+        val op = data.getProper("op")?.toString() ?: throw UnsupportedOperationException("Missing opcode from JSON Data!")
         if (op == "dispatch") {
+            (data.getProper("key") ?: data.getProper("guildId"))?.let { vertx.eventBus().publish(it.toString(), data) }
             vertx.eventBus().publish(data["key"]!!.toString(), data.toString())
-            when (data["name"]?.toString()) {
+            when (data.getProper("name")?.toString()) {
                 null -> throw UnsupportedOperationException("Missing name from JSON Data!")
-                "ERROR" -> throw RuntimeException(data["data"]?.toString() ?: "No message.")
+                "ERROR" -> throw RuntimeException(data.getProper("data")?.toString() ?: "No message.")
                 "TRACK_STARTED" -> {
-                    val player = client.getPlayerById(data["guildId"]!!.toLong())!!
-                    player.fireEvent(TrackStartEvent(player, player.guildId,
-                            client.trackUtil.decodeTrack(data["data"]!!["data"]!!.toString())))
+                    val player = data.getProper("guildId")?.toString()?.let { client.getPlayerById(it) }
+                    val track = data.getProper("data")?.getProper("data")?.toString()?.let { client.trackUtil.decodeTrack(it) }
+                    track?.let { player?.fireEvent(TrackStartEvent(player, player.guildId, it)) }
                 }
                 "TRACK_ENDED" -> {
-                    val raw = data["data"]!!
-                    val player = client.getPlayerById(data["guildId"]!!.toLong())!!
-                    player.fireEvent(TrackEndEvent(player, player.guildId,
-                            client.trackUtil.decodeTrack(raw["track"]!!.toString()),
-                            AudioTrackEndReason.valueOf(raw["reason"]!!["type"]!!.toString())))
+                    val player = data.getProper("guildId")?.toString()?.let { client.getPlayerById(it) }
+                    val raw = data.getProper("data")?.getProper("data")
+                    raw?.let { rawData ->
+                        val track = rawData.getProper("track")?.toString()?.let { client.trackUtil.decodeTrack(it) } ?: return@let
+                        val reason = rawData.getProper("reason")?.getProper("type")?.toString()?.let { AudioTrackEndReason.valueOf(it) } ?: return@let
+                        player?.fireEvent(TrackEndEvent(player, player.guildId, track, reason))
+                    }
                 }
                 "TRACK_EXCEPTION" -> {
-                    val raw = data["data"]!!
-                    val player = client.getPlayerById(data["guildId"]!!.toLong())!!
-                    player.fireEvent(TrackExceptionEvent(player, player.guildId,
-                            client.trackUtil.decodeTrack(raw["track"]!!.toString()),
-                            raw["exception"]!!["message"]!!.toString(),
-                            FriendlyException.Severity.valueOf(raw["exception"]["severity"]!!.toString())))
+                    val player = data.getProper("guildId")?.toString()?.let { client.getPlayerById(it) }
+                    val raw = data.getProper("data")?.getProper("data")
+                    raw?.let { rawData ->
+                        val track = rawData.getProper("track")?.toString()?.let { client.trackUtil.decodeTrack(it) } ?: return@let
+                        val message = rawData.getProper("exception")?.getProper("message")?.toString() ?: return@let
+                        val severity = rawData["exception"]?.getProper("severity")?.toString()?.let { FriendlyException.Severity.valueOf(it) } ?: return@let
+                        player?.fireEvent(TrackExceptionEvent(player, player.guildId, track, message, severity))
+                    }
                 }
                 "TRACK_STUCK" -> {
-                    val player = client.getPlayerById(data["guildId"]!!.toLong())!!
-                    player.fireEvent(TrackStuckEvent(player, player.guildId,
-                            client.trackUtil.decodeTrack(data["data"]!!["track"]!!.toString()),
-                            data["data"]["thresholdMs"]!!.toLong()))
+                    val player = data.getProper("guildId")?.toString()?.let { client.getPlayerById(it) }
+                    val raw = data.getProper("data")?.getProper("data")
+                    raw?.let { rawData ->
+                        val track = rawData.getProper("track")?.toString()?.let { client.trackUtil.decodeTrack(it) } ?: return@let
+                        val thresholdMs = rawData.getProper("thresholdMs")?.toLong() ?: return@let
+                        player?.fireEvent(TrackStuckEvent(player, player.guildId, track, thresholdMs))
+                    }
                 }
                 "PLAYER_PAUSED" -> {
-                    val player = client.getPlayerById(data["guildId"]!!.toLong())!!
-                    val event = if (data["data"]!!.toBoolean()) {
-                        PlayerPauseEvent(player, player.guildId)
+                    data.getProper("guildId")?.toString()?.let { client.getPlayerById(it) }?.let { player ->
+                        val event = if (data["data"]?.toBoolean() == true) {
+                            PlayerPauseEvent(player, player.guildId)
+                        } else {
+                            PlayerResumeEvent(player, player.guildId)
+                        }
+                        player.fireEvent(event)
                     }
-                    else {
-                        PlayerResumeEvent(player, player.guildId)
-                    }
-                    player.fireEvent(event)
                 }
             }
         } else {
@@ -179,8 +189,7 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
             // todo add reconnect attempts
         }
         closedByClient.set(false)
-        client.internalPlayers.valueCollection().forEach {
-            player ->
+        client.internalPlayers.values.forEach { player ->
             if (player.node == this)
                 player.node = client.bestNode
             player.connect()
@@ -198,4 +207,11 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
     companion object {
         private val LOGGER: Logger = LoggerFactory.getLogger(AudioNode::class.java)
     }
+}
+
+fun Any.getProper(name: String): Any? {
+    val data = get(name)
+    return if (data.valueType() == ValueType.NULL || data.valueType() == ValueType.INVALID)
+        null
+    else data
 }

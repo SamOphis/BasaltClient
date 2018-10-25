@@ -17,6 +17,6 @@
 package com.github.samophis.basalt.client.entities.messages.client
 
 @Suppress("UNUSED")
-class SeekRequest internal constructor(val key: String, val guildId: String, val position: Long) {
+class SeekRequest internal constructor(val guildId: String, val position: Long) {
     val op = "seek"
 }
