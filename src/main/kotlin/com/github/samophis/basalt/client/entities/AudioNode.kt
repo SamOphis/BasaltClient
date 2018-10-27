@@ -123,7 +123,7 @@ class AudioNode internal constructor(val client: BasaltClient, val wsPort: Int, 
         val data = JsonIterator.deserialize(msg)
         val op = data.getProper("op")?.toString() ?: throw UnsupportedOperationException("Missing opcode from JSON Data!")
         if (op == "dispatch") {
-            (data.getProper("key") ?: data.getProper("guildId"))?.let { vertx.eventBus().publish(it.toString(), data) }
+            (data.getProper("key") ?: data.getProper("guildId"))?.let { vertx.eventBus().publish(it.toString(), data.toString()) }
             vertx.eventBus().publish(data["key"]!!.toString(), data.toString())
             when (data.getProper("name")?.toString()) {
                 null -> throw UnsupportedOperationException("Missing name from JSON Data!")
